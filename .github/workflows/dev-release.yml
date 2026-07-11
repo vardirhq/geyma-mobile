@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
   # workflow_dispatch is only registered once this file reaches the default
   # branch, so also fire on pushes that touch this file — that lets the
-  # workflow run straight from a feature branch.
+  # workflow run straight from a feature branch. To publish a new dev APK
+  # from a branch, include any edit to this file in the push.
   push:
     paths:
       - ".github/workflows/dev-release.yml"

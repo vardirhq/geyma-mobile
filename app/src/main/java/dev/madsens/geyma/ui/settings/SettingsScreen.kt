@@ -22,9 +22,14 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,22 +51,51 @@ import dev.madsens.geyma.theme.SKINS
 import dev.madsens.geyma.theme.SKIN_ORDER
 import dev.madsens.geyma.theme.Skin
 import dev.madsens.geyma.theme.TileStyle
+import dev.madsens.geyma.theme.itemColors
 import dev.madsens.geyma.theme.onAccent
+import dev.madsens.geyma.ui.components.GeymaCard
 import dev.madsens.geyma.ui.components.SectionHeader
 import dev.madsens.geyma.ui.components.geymaShape
+import dev.madsens.geyma.ui.components.kindIcon
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(app: GeymaApp, onOpenTrash: () -> Unit) {
+fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
     val t = LocalTheme.current
     val scope = rememberCoroutineScope()
     val prefs = app.prefs
+    val trashEntries by app.db.trash().all().collectAsState(initial = emptyList())
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         item {
-            Spacer(Modifier.height(10.dp))
-            Text("Appearance", color = t.ink, fontWeight = FontWeight.Bold, fontSize = 24.sp)
-            Text("Skins and tokens, straight from the desktop app", color = t.inkFaint, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.padding(end = 4.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = t.inkSoft)
+                }
+                Column {
+                    Text("Settings", color = t.ink, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                    Text("Make Geyma yours", color = t.inkFaint, fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // Live sample of the current tokens, so every tweak below is
+        // immediately legible without leaving the page.
+        item {
+            GeymaCard(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t.name, color = t.ink, fontWeight = FontWeight.SemiBold)
+                        Text(t.tag, color = t.inkFaint, fontSize = 12.sp)
+                    }
+                    Box(Modifier.size(18.dp).clip(CircleShape).background(t.accent))
+                }
+                Spacer(Modifier.height(10.dp))
+                PreviewRow(name = "Photos", kind = "folder", starred = true, meta = "128 items")
+                PreviewRow(name = "notes.md", kind = "text", starred = false, meta = "4.2 KB")
+            }
         }
 
         item { SectionHeader("Skin") }
@@ -165,45 +199,82 @@ fun SettingsScreen(app: GeymaApp, onOpenTrash: () -> Unit) {
         }
 
         item {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Reset customizations",
-                color = t.accent,
-                fontSize = 14.sp,
+            Spacer(Modifier.height(10.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(geymaShape(0.5f))
                     .clickable { scope.launch { prefs.resetOverrides() } }
                     .padding(8.dp),
-            )
+            ) {
+                Icon(Icons.Filled.RestartAlt, null, tint = t.accent, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Reset customizations to the skin's defaults", color = t.accent, fontSize = 14.sp)
+            }
         }
 
         item { SectionHeader("Storage") }
         item {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(geymaShape())
-                    .clickable { onOpenTrash() }
-                    .padding(vertical = 10.dp, horizontal = 6.dp),
-            ) {
-                Icon(Icons.Filled.Delete, null, tint = t.inkSoft, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(12.dp))
-                Text("Trash", color = t.ink)
+            GeymaCard(modifier = Modifier.fillMaxWidth(), padding = 4.dp) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(geymaShape(0.7f))
+                        .clickable { onOpenTrash() }
+                        .padding(vertical = 10.dp, horizontal = 10.dp),
+                ) {
+                    Icon(Icons.Filled.Delete, null, tint = t.inkSoft, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Trash", color = t.ink, modifier = Modifier.weight(1f))
+                    if (trashEntries.isNotEmpty()) {
+                        Text("${trashEntries.size}", color = t.inkFaint, fontSize = 12.sp)
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Icon(Icons.AutoMirrored.Filled.NavigateNext, null, tint = t.inkFaint, modifier = Modifier.size(18.dp))
+                }
             }
         }
 
         item {
             SectionHeader("About")
-            Text("Geyma Mobile 0.1.0", color = t.inkSoft, fontSize = 13.sp)
-            Text(
-                "Geyma — Old Norse, “to keep, to guard.” A file manager that remembers.",
-                color = t.inkFaint,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            GeymaCard(modifier = Modifier.fillMaxWidth()) {
+                Text("Geyma Mobile 0.1.0", color = t.ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Old Norse — “to keep, to guard.” A file manager that remembers. " +
+                        "Companion to the Geyma desktop app; everything stays on this device.",
+                    color = t.inkFaint,
+                    fontSize = 12.sp,
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun PreviewRow(name: String, kind: String, starred: Boolean, meta: String) {
+    val t = LocalTheme.current
+    val colors = itemColors(kind, t)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Box(
+            Modifier.size(30.dp).clip(geymaShape(0.6f)).background(colors.bg),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(kindIcon(kind), null, tint = colors.tint, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(name, color = t.ink, fontSize = 14.sp)
+        if (starred) {
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Filled.Star, null, tint = t.accent, modifier = Modifier.size(13.dp))
+        }
+        Spacer(Modifier.weight(1f))
+        Text(meta, color = t.inkFaint, fontSize = 12.sp)
     }
 }
 
