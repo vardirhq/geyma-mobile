@@ -3,6 +3,7 @@ package dev.madsens.geyma.files
 import dev.madsens.geyma.data.EventActions
 import dev.madsens.geyma.data.FileEvent
 import dev.madsens.geyma.data.GeymaDb
+import dev.madsens.geyma.data.SeenFile
 import dev.madsens.geyma.data.Star
 import dev.madsens.geyma.data.TrashEntry
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +11,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 data class Entry(
     val name: String,
@@ -32,6 +34,27 @@ data class GhostTrail(
     val whenMs: Long,
 )
 
+/** One result from a journal-wide search — a file as Geyma last knew it. */
+data class SearchHit(
+    val name: String,
+    val path: String,
+    val exists: Boolean,
+    val trashed: Boolean,
+    val lastAction: String,
+    val lastWhenMs: Long,
+    val prevPath: String?,
+)
+
+/** A neglected arrival surfaced on the Sweep screen. */
+data class SweepItem(
+    val name: String,
+    val path: String,
+    val size: Long,
+    val firstSeenMs: Long,
+    val ageDays: Int,
+    val kind: String,
+)
+
 /**
  * Every mutation goes through here so the journal, stars, sets, and trash
  * registry stay consistent — the mobile equivalent of the desktop's Rust
@@ -43,6 +66,7 @@ class FsRepository(private val db: GeymaDb) {
     private val stars get() = db.stars()
     private val trash get() = db.trash()
     private val sets get() = db.sets()
+    private val seen get() = db.seen()
 
     val trashDir: File = File(StorageRoots.primaryPath(), ".geyma/trash")
 
@@ -84,6 +108,126 @@ class FsRepository(private val db: GeymaDb) {
     }
 
     suspend fun historyFor(path: String): List<FileEvent> = events.forPath(path)
+
+    /**
+     * Journal-wide search: matches live files by name plus anything Geyma
+     * remembers — trashed, moved or renamed files — collapsed to one hit per
+     * file. This is "find my file" over the past, not just the current tree.
+     */
+    suspend fun searchJournal(query: String): List<SearchHit> = withContext(Dispatchers.IO) {
+        val q = query.trim()
+        if (q.isBlank()) return@withContext emptyList()
+        val byFile = LinkedHashMap<String, SearchHit>()
+        for (e in events.search(q)) {
+            val gone = e.action == EventActions.TRASHED || e.action == EventActions.DELETED
+            // For trashed/deleted files the live path is an internal trash path
+            // with a UUID prefix — the file the user is looking for is the origin.
+            val identity = if (gone) (e.prevPath ?: e.path) else e.path
+            val name = PathUtils.nameOf(identity)
+            // Skip journal-internal churn that doesn't name a real file match.
+            if (!name.contains(q, ignoreCase = true) &&
+                !PathUtils.nameOf(e.path).contains(q, ignoreCase = true)
+            ) {
+                continue
+            }
+            if (identity in byFile) continue
+            // A trashed file still physically exists (in trash); a deleted one doesn't.
+            val exists = if (e.action == EventActions.DELETED) false else File(e.path).exists()
+            byFile[identity] = SearchHit(
+                name = name,
+                path = if (gone) identity else e.path,
+                exists = exists && !gone,
+                trashed = gone,
+                lastAction = e.action,
+                lastWhenMs = e.whenMs,
+                prevPath = e.prevPath,
+            )
+        }
+        byFile.values.sortedByDescending { it.lastWhenMs }
+    }
+
+    /** Note that the user opened a file, both in the journal and the seen-ledger. */
+    suspend fun recordOpen(path: String) = withContext(Dispatchers.IO) {
+        seen.markOpened(path, System.currentTimeMillis())
+        log(EventActions.OPENED, path, isDir = false)
+    }
+
+    /**
+     * Record a file that arrived from outside the browser — a share-sheet drop or
+     * a live folder-watch hit — as a journal arrival plus a seen-ledger row. It
+     * counts as already opened, since the user chose to bring it in.
+     */
+    suspend fun recordArrival(path: String, detail: String) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        seen.add(SeenFile(path = path, firstSeenMs = now, lastOpenedMs = now))
+        log(EventActions.ARRIVED, path, detail = detail, isDir = false)
+    }
+
+    /**
+     * Files that arrived from outside Geyma and were never opened through it,
+     * ranked by neglect (oldest, largest first). Powers the Sweep screen. Stale
+     * ledger rows whose file is gone are cleaned up as a side effect.
+     */
+    suspend fun sweepCandidates(): List<SweepItem> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val out = ArrayList<SweepItem>()
+        for (row in seen.neverOpened()) {
+            val f = File(row.path)
+            if (!f.exists() || f.isDirectory) {
+                seen.remove(row.path)
+                continue
+            }
+            out.add(
+                SweepItem(
+                    name = f.name,
+                    path = row.path,
+                    size = f.length(),
+                    firstSeenMs = row.firstSeenMs,
+                    ageDays = ((now - row.firstSeenMs) / TimeUnit.DAYS.toMillis(1)).toInt(),
+                    kind = FileKind.ofName(f.name, false),
+                ),
+            )
+        }
+        // Most-neglected first: old files bubble up, ties broken by size.
+        out.sortedWith(compareByDescending<SweepItem> { it.firstSeenMs.let { s -> now - s } }.thenByDescending { it.size })
+    }
+
+    /**
+     * Reconcile watched folders against the seen-ledger. On the very first run
+     * ([seeded] false) it silently records what's already there — no user wants
+     * a thousand "arrived" events on install. After that, any genuinely new file
+     * becomes an arrival in the journal. Returns how many arrivals were logged.
+     */
+    suspend fun reconcileArrivals(watchedDirs: List<String>, seeded: Boolean): Int = withContext(Dispatchers.IO) {
+        val known = seen.allPaths().toHashSet()
+        val now = System.currentTimeMillis()
+        var arrivals = 0
+        for (dirPath in watchedDirs) {
+            val dir = File(dirPath)
+            val kids = dir.listFiles() ?: continue
+            for (f in kids) {
+                if (f.isDirectory || f.name.startsWith(".")) continue
+                val path = f.absolutePath
+                if (path in known) continue
+                known.add(path)
+                if (seeded) {
+                    // A genuine new arrival: journal it and leave it "unopened"
+                    // so the Sweep screen can surface it later.
+                    seen.add(SeenFile(path = path, firstSeenMs = now, lastOpenedMs = null))
+                    log(
+                        EventActions.ARRIVED, path,
+                        detail = "in ${PathUtils.nameOf(dirPath)}", isDir = false,
+                    )
+                    arrivals++
+                } else {
+                    // First inventory: record what's already here as handled, so
+                    // Geyma never proposes sweeping files that predate it.
+                    seen.add(SeenFile(path = path, firstSeenMs = f.lastModified(), lastOpenedMs = f.lastModified()))
+                }
+            }
+        }
+        arrivals
+    }
 
     suspend fun createFolder(parent: String, name: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
@@ -169,6 +313,7 @@ class FsRepository(private val db: GeymaDb) {
                 )
                 log(EventActions.TRASHED, dst.absolutePath, prevPath = path, detail = "to trash", isDir = isDir)
                 stars.removeTree(path)
+                seen.removeTree(path)
                 trashed++
             }
             trashed
@@ -234,6 +379,7 @@ class FsRepository(private val db: GeymaDb) {
         events.rebasePaths(oldBase, newBase)
         stars.rebasePaths(oldBase, newBase)
         sets.rebasePaths(oldBase, newBase)
+        seen.rebasePaths(oldBase, newBase)
     }
 
     private suspend fun log(

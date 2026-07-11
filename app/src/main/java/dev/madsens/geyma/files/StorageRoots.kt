@@ -64,4 +64,27 @@ object StorageRoots {
             "Movies" to "$base/Movies",
         )
     }
+
+    /**
+     * Folders Geyma watches for arrivals — where files land on a phone without
+     * anyone filing them: downloads, screenshots, camera, and messaging media.
+     * Only the ones that actually exist are returned.
+     */
+    fun watchedFolders(): List<String> {
+        val base = primaryPath()
+        return listOf(
+            "$base/Download",
+            "$base/Downloads",
+            "$base/Documents",
+            "$base/Pictures",
+            "$base/Pictures/Screenshots",
+            "$base/DCIM/Screenshots",
+            "$base/DCIM/Camera",
+            "$base/Movies",
+            "$base/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents",
+            "$base/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images",
+            "$base/bluetooth",
+            "$base/Telegram",
+        ).filter { File(it).isDirectory }
+    }
 }

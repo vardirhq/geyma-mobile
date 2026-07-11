@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +51,7 @@ import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.onAccent
 import dev.madsens.geyma.ui.browser.NameDialog
 import dev.madsens.geyma.ui.browser.openFile
+import dev.madsens.geyma.ui.browser.shareFiles
 import dev.madsens.geyma.ui.components.EmptyState
 import dev.madsens.geyma.ui.components.GeymaCard
 import dev.madsens.geyma.ui.components.KindBadge
@@ -157,6 +159,17 @@ private fun SetDetail(app: GeymaApp, set: WorkingSet, onClose: () -> Unit, onBro
                     color = t.inkFaint,
                     fontSize = 12.sp,
                 )
+            }
+            val shareableCount = items.count { File(it.path).isFile }
+            if (shareableCount > 0) {
+                IconButton(onClick = {
+                    scope.launch {
+                        val paths = app.db.sets().itemPaths(set.id)
+                        shareFiles(context, paths)
+                    }
+                }) {
+                    Icon(Icons.Filled.Share, "Share set", tint = t.accent)
+                }
             }
         }
         Spacer(Modifier.height(8.dp))

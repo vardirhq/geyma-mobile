@@ -30,7 +30,25 @@ object EventActions {
     const val DELETED = "deleted"
     const val STARRED = "starred"
     const val UNSTARRED = "unstarred"
+
+    /** A file appeared in a watched folder from outside Geyma (download, share, screenshot…). */
+    const val ARRIVED = "arrived"
+
+    /** The user opened a file through Geyma. */
+    const val OPENED = "opened"
 }
+
+/**
+ * Ledger of files Geyma has noticed in watched folders. firstSeenMs is the
+ * arrival time; lastOpenedMs stays null until the user opens the file through
+ * Geyma — "arrived but never opened" is what the Sweep screen keys on.
+ */
+@Entity(tableName = "seen_files")
+data class SeenFile(
+    @PrimaryKey val path: String,
+    val firstSeenMs: Long,
+    val lastOpenedMs: Long? = null,
+)
 
 @Entity(tableName = "stars")
 data class Star(

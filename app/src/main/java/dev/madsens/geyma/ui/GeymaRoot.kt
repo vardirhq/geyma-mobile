@@ -30,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,11 +53,14 @@ import dev.madsens.geyma.files.StorageRoots
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.geymaBackdrop
 import dev.madsens.geyma.theme.onAccent
+import dev.madsens.geyma.ui.browser.AddToSetDialog
 import dev.madsens.geyma.ui.browser.BrowserScreen
 import dev.madsens.geyma.ui.browser.BrowserViewModel
+import dev.madsens.geyma.ui.finder.FinderScreen
 import dev.madsens.geyma.ui.home.HomeScreen
 import dev.madsens.geyma.ui.sets.SetsScreen
 import dev.madsens.geyma.ui.settings.SettingsScreen
+import dev.madsens.geyma.ui.sweep.SweepScreen
 import dev.madsens.geyma.ui.timeline.TimelineScreen
 import dev.madsens.geyma.ui.trash.TrashScreen
 
@@ -68,17 +72,30 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 }
 
 @Composable
-fun GeymaRoot(app: GeymaApp) {
+fun GeymaRoot(
+    app: GeymaApp,
+    sharedUris: List<Uri> = emptyList(),
+    onSharedConsumed: () -> Unit = {},
+) {
     val t = LocalTheme.current
     val context = LocalContext.current
     var hasAccess by remember { mutableStateOf(StorageRoots.hasFullAccess(context)) }
 
     // Re-check on resume: the all-files-access grant happens in system settings.
+    // Also re-scan watched folders so arrivals show up when returning to Geyma.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                hasAccess = StorageRoots.hasFullAccess(context)
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    hasAccess = StorageRoots.hasFullAccess(context)
+                    if (hasAccess) {
+                        app.watcher.sync()
+                        app.watcher.start()
+                    }
+                }
+                Lifecycle.Event.ON_STOP -> app.watcher.stop()
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -95,6 +112,18 @@ fun GeymaRoot(app: GeymaApp) {
         var tab by remember { mutableStateOf(Tab.HOME) }
         var trashOpen by remember { mutableStateOf(false) }
         var settingsOpen by remember { mutableStateOf(false) }
+        var finderOpen by remember { mutableStateOf(false) }
+        var sweepOpen by remember { mutableStateOf(false) }
+
+        // Files shared into Geyma: copy them into the inbox, then offer a set to file them in.
+        var intakePaths by remember { mutableStateOf<List<String>?>(null) }
+        LaunchedEffect(sharedUris) {
+            if (sharedUris.isNotEmpty()) {
+                val paths = dev.madsens.geyma.ui.share.ShareIntake.intake(context, app, sharedUris, fromApp = null)
+                if (paths.isNotEmpty()) intakePaths = paths
+                onSharedConsumed()
+            }
+        }
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -102,10 +131,12 @@ fun GeymaRoot(app: GeymaApp) {
                 NavigationBar(containerColor = t.surface) {
                     for (candidate in Tab.entries) {
                         NavigationBarItem(
-                            selected = tab == candidate && !trashOpen && !settingsOpen,
+                            selected = tab == candidate && !trashOpen && !settingsOpen && !finderOpen && !sweepOpen,
                             onClick = {
                                 trashOpen = false
                                 settingsOpen = false
+                                finderOpen = false
+                                sweepOpen = false
                                 tab = candidate
                             },
                             icon = { Icon(candidate.icon, candidate.label) },
@@ -124,6 +155,29 @@ fun GeymaRoot(app: GeymaApp) {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when {
+                    finderOpen -> {
+                        BackHandler { finderOpen = false }
+                        FinderScreen(
+                            app = app,
+                            onBack = { finderOpen = false },
+                            onBrowseTo = { path ->
+                                finderOpen = false
+                                vm.open(path)
+                                tab = Tab.FILES
+                            },
+                        )
+                    }
+                    sweepOpen -> {
+                        BackHandler { sweepOpen = false }
+                        SweepScreen(
+                            app = app,
+                            onBack = { sweepOpen = false },
+                            onOpenTrash = {
+                                sweepOpen = false
+                                trashOpen = true
+                            },
+                        )
+                    }
                     trashOpen -> {
                         BackHandler { trashOpen = false }
                         TrashScreen(app)
@@ -146,6 +200,8 @@ fun GeymaRoot(app: GeymaApp) {
                             onOpenTimeline = { tab = Tab.TIMELINE },
                             onOpenTrash = { trashOpen = true },
                             onOpenSettings = { settingsOpen = true },
+                            onOpenFinder = { finderOpen = true },
+                            onOpenSweep = { sweepOpen = true },
                         )
                         Tab.FILES -> BrowserScreen(app, vm)
                         Tab.TIMELINE -> TimelineScreen(app) { path ->
@@ -159,6 +215,14 @@ fun GeymaRoot(app: GeymaApp) {
                     }
                 }
             }
+        }
+
+        intakePaths?.let { paths ->
+            AddToSetDialog(
+                app = app,
+                paths = paths,
+                onDone = { intakePaths = null },
+            )
         }
     }
 }

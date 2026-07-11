@@ -18,6 +18,26 @@ interface EventDao {
     @Query("SELECT * FROM events ORDER BY whenMs DESC LIMIT :limit")
     fun recent(limit: Int): Flow<List<FileEvent>>
 
+    /** Every event, oldest first — used to export the journal for desktop handoff. */
+    @Query("SELECT * FROM events ORDER BY whenMs ASC")
+    suspend fun allChronological(): List<FileEvent>
+
+    /**
+     * Journal-wide search across everything Geyma remembers: current names and
+     * the names files carried before a move or rename. One row per file (newest
+     * event wins) so a file that moved three times shows up once.
+     */
+    @Query(
+        "SELECT * FROM events WHERE " +
+            "path LIKE '%' || :q || '%' OR prevPath LIKE '%' || :q || '%' OR detail LIKE '%' || :q || '%' " +
+            "ORDER BY whenMs DESC LIMIT 400",
+    )
+    suspend fun search(q: String): List<FileEvent>
+
+    /** Recent arrivals — files that appeared from outside Geyma, newest first. */
+    @Query("SELECT * FROM events WHERE action = 'arrived' ORDER BY whenMs DESC LIMIT :limit")
+    fun recentArrivals(limit: Int): Flow<List<FileEvent>>
+
     /**
      * Ghost trails: departures (move/rename/trash) whose origin sat directly in
      * [dir], newer than [sinceMs]. prevPath NOT LIKE dir/%/% keeps it to direct
@@ -55,6 +75,9 @@ interface StarDao {
     @Query("SELECT path FROM stars")
     suspend fun allPaths(): List<String>
 
+    @Query("SELECT * FROM stars ORDER BY whenMs ASC")
+    suspend fun snapshot(): List<Star>
+
     @Query("SELECT EXISTS(SELECT 1 FROM stars WHERE path = :path)")
     suspend fun isStarred(path: String): Boolean
 
@@ -84,6 +107,37 @@ interface TrashDao {
 }
 
 @Dao
+interface SeenDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun add(seen: SeenFile)
+
+    @Query("SELECT path FROM seen_files")
+    suspend fun allPaths(): List<String>
+
+    @Query("SELECT * FROM seen_files WHERE path = :path")
+    suspend fun byPath(path: String): SeenFile?
+
+    @Query("UPDATE seen_files SET lastOpenedMs = :whenMs WHERE path = :path")
+    suspend fun markOpened(path: String, whenMs: Long)
+
+    /** Files noticed but never opened through Geyma, oldest arrivals first. */
+    @Query("SELECT * FROM seen_files WHERE lastOpenedMs IS NULL ORDER BY firstSeenMs ASC")
+    suspend fun neverOpened(): List<SeenFile>
+
+    @Query("DELETE FROM seen_files WHERE path = :path")
+    suspend fun remove(path: String)
+
+    @Query(
+        "UPDATE OR REPLACE seen_files SET path = :newBase || substr(path, length(:oldBase) + 1) " +
+            "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
+    )
+    suspend fun rebasePaths(oldBase: String, newBase: String)
+
+    @Query("DELETE FROM seen_files WHERE path = :path OR path LIKE :path || '/%'")
+    suspend fun removeTree(path: String)
+}
+
+@Dao
 interface SetDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addSet(set: WorkingSet)
@@ -105,6 +159,15 @@ interface SetDao {
 
     @Query("SELECT * FROM set_items WHERE setId = :setId ORDER BY addedMs DESC")
     fun items(setId: String): Flow<List<SetItem>>
+
+    @Query("SELECT * FROM sets ORDER BY createdMs ASC")
+    suspend fun snapshotSets(): List<WorkingSet>
+
+    @Query("SELECT * FROM set_items ORDER BY addedMs ASC")
+    suspend fun snapshotItems(): List<SetItem>
+
+    @Query("SELECT path FROM set_items WHERE setId = :setId ORDER BY addedMs DESC")
+    suspend fun itemPaths(setId: String): List<String>
 
     @Query("SELECT COUNT(*) FROM set_items WHERE setId = :setId")
     fun itemCount(setId: String): Flow<Int>
