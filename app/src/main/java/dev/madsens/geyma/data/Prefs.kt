@@ -46,7 +46,14 @@ class Prefs(private val context: Context) {
         val sortKey = stringPreferencesKey("sort_key")
         val sortDir = stringPreferencesKey("sort_dir")
         val showHidden = booleanPreferencesKey("show_hidden")
+        val arrivalsSeeded = booleanPreferencesKey("arrivals_seeded")
     }
+
+    /** False until Geyma has taken its first inventory of the watched folders. */
+    val arrivalsSeeded: Flow<Boolean> = context.dataStore.data.map { it[Keys.arrivalsSeeded] ?: false }
+
+    suspend fun setArrivalsSeeded(seeded: Boolean) =
+        context.dataStore.edit { it[Keys.arrivalsSeeded] = seeded }
 
     val theme: Flow<ResolvedTheme> = context.dataStore.data.map { p ->
         val ov = SkinOverrides(

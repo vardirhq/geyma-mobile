@@ -203,6 +203,11 @@ class BrowserViewModel(private val repo: FsRepository, private val prefs: Prefs)
         _state.value = _state.value.copy(error = null)
     }
 
+    /** Record that a file was opened, so the seen-ledger stops flagging it as neglected. */
+    fun noteOpened(path: String) {
+        viewModelScope.launch { repo.recordOpen(path) }
+    }
+
     companion object {
         fun factory(app: GeymaApp) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

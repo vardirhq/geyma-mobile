@@ -24,10 +24,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -39,10 +44,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import dev.madsens.geyma.GeymaApp
+import dev.madsens.geyma.ui.browser.shareFile
 import dev.madsens.geyma.theme.ACCENTS
 import dev.madsens.geyma.theme.BackgroundPattern
 import dev.madsens.geyma.theme.FontKey
@@ -62,9 +70,29 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
     val t = LocalTheme.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = app.prefs
     val trashEntries by app.db.trash().all().collectAsState(initial = emptyList())
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { app.continuity.import(it) }
+                }.onSuccess { summary ->
+                    val msg = summary?.let {
+                        "Merged ${it.events} events, ${it.stars} stars, ${it.sets} sets"
+                    } ?: "Could not read that file"
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    Toast.makeText(context, "Not a Geyma bundle", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         item {
@@ -232,6 +260,62 @@ fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                         Spacer(Modifier.width(4.dp))
                     }
                     Icon(Icons.AutoMirrored.Filled.NavigateNext, null, tint = t.inkFaint, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
+        item { SectionHeader("Continuity") }
+        item {
+            GeymaCard(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Sync, null, tint = t.accent, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Carry your memory between devices", color = t.ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Export your stars, sets and timeline as a portable .geyma bundle to hand off " +
+                        "to the desktop app or another phone — no account, nothing leaves your device " +
+                        "except the file you choose to share.",
+                    color = t.inkFaint,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(geymaShape(0.7f))
+                            .border(BorderStroke(1.dp, t.border), geymaShape(0.7f))
+                            .clickable {
+                                scope.launch {
+                                    runCatching { app.continuity.export() }
+                                        .onSuccess { file -> shareFile(context, file.absolutePath) }
+                                        .onFailure { Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show() }
+                                }
+                            }
+                            .padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(Icons.Filled.FileUpload, null, tint = t.accent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Export & share", color = t.ink, fontSize = 13.sp)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(geymaShape(0.7f))
+                            .border(BorderStroke(1.dp, t.border), geymaShape(0.7f))
+                            .clickable { importLauncher.launch(arrayOf("*/*")) }
+                            .padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(Icons.Filled.FileDownload, null, tint = t.accent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Import bundle", color = t.ink, fontSize = 13.sp)
+                    }
                 }
             }
         }

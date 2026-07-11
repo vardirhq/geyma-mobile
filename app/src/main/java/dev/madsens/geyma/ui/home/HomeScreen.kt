@@ -16,9 +16,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoveToInbox
 import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Star
@@ -56,11 +59,14 @@ fun HomeScreen(
     onOpenTimeline: () -> Unit,
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenFinder: () -> Unit,
+    onOpenSweep: () -> Unit,
 ) {
     val t = LocalTheme.current
     val context = LocalContext.current
     val roots = remember { StorageRoots.list(context) }
     val recent by app.db.events().recent(6).collectAsState(initial = emptyList())
+    val arrivals by app.db.events().recentArrivals(5).collectAsState(initial = emptyList())
     val stars by app.db.stars().all().collectAsState(initial = emptyList())
     val trashCount by app.db.trash().all().collectAsState(initial = emptyList())
 
@@ -80,7 +86,72 @@ fun HomeScreen(
                         Icon(Icons.Filled.Settings, "Settings", tint = t.inkSoft)
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(geymaShape())
+                        .background(t.card)
+                        .clickable { onOpenFinder() }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                ) {
+                    Icon(Icons.Filled.Search, null, tint = t.inkSoft, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Find a file you had…", color = t.inkFaint, fontSize = 14.sp)
+                }
                 Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        if (arrivals.isNotEmpty()) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SectionHeader("Recently arrived", Modifier.weight(1f))
+                    Text(
+                        "Sweep",
+                        color = t.accent,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onOpenSweep() }
+                            .padding(4.dp),
+                    )
+                }
+            }
+            item {
+                GeymaCard(modifier = Modifier.fillMaxWidth()) {
+                    for (event in arrivals) {
+                        val f = remember(event.path) { File(event.path) }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable(enabled = f.exists()) {
+                                    onBrowse(f.parent ?: event.path)
+                                }
+                                .padding(vertical = 6.dp),
+                        ) {
+                            Icon(Icons.Filled.MoveToInbox, null, tint = t.accent, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    PathUtils.nameOf(event.path),
+                                    color = t.ink,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    (event.detail ?: "arrived") + " · " + timeAgo(event.whenMs),
+                                    color = t.inkFaint,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -128,6 +199,18 @@ fun HomeScreen(
                         Spacer(Modifier.width(12.dp))
                         Text(label, color = t.ink)
                     }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(geymaShape())
+                        .clickable { onOpenSweep() }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Filled.CleaningServices, null, tint = t.inkSoft, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Sweep forgotten files", color = t.ink, modifier = Modifier.weight(1f))
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

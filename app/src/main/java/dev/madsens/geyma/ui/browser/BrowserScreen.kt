@@ -164,7 +164,7 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel) {
                         } else if (entry.isDir) {
                             vm.open(entry.path)
                         } else {
-                            openFile(context, entry.path)
+                            openFile(context, entry.path) { vm.noteOpened(it) }
                         }
                     },
                     onLongPress = { vm.toggleSelect(it.path) },
@@ -211,7 +211,7 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel) {
             onDismiss = { sheetEntry = null },
             onOpen = {
                 sheetEntry = null
-                if (entry.isDir) vm.open(entry.path) else openFile(context, entry.path)
+                if (entry.isDir) vm.open(entry.path) else openFile(context, entry.path) { vm.noteOpened(it) }
             },
             onShare = { shareFile(context, entry.path) },
             onStar = {
@@ -699,7 +699,7 @@ fun NameDialog(
 }
 
 @Composable
-private fun AddToSetDialog(app: GeymaApp, paths: List<String>, onDone: () -> Unit) {
+fun AddToSetDialog(app: GeymaApp, paths: List<String>, onDone: () -> Unit) {
     val t = LocalTheme.current
     val sets by app.db.sets().all().collectAsState(initial = emptyList())
     val scope = androidx.compose.runtime.rememberCoroutineScope()
