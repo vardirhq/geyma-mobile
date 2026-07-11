@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -66,7 +65,6 @@ private enum class Tab(val label: String, val icon: ImageVector) {
     FILES("Files", Icons.Filled.Folder),
     TIMELINE("Timeline", Icons.Filled.History),
     SETS("Sets", Icons.AutoMirrored.Filled.PlaylistPlay),
-    SETTINGS("Theme", Icons.Filled.Palette),
 }
 
 @Composable
@@ -96,6 +94,7 @@ fun GeymaRoot(app: GeymaApp) {
         val vm: BrowserViewModel = viewModel(factory = BrowserViewModel.factory(app))
         var tab by remember { mutableStateOf(Tab.HOME) }
         var trashOpen by remember { mutableStateOf(false) }
+        var settingsOpen by remember { mutableStateOf(false) }
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -103,9 +102,10 @@ fun GeymaRoot(app: GeymaApp) {
                 NavigationBar(containerColor = t.surface) {
                     for (candidate in Tab.entries) {
                         NavigationBarItem(
-                            selected = tab == candidate && !trashOpen,
+                            selected = tab == candidate && !trashOpen && !settingsOpen,
                             onClick = {
                                 trashOpen = false
+                                settingsOpen = false
                                 tab = candidate
                             },
                             icon = { Icon(candidate.icon, candidate.label) },
@@ -123,11 +123,20 @@ fun GeymaRoot(app: GeymaApp) {
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                if (trashOpen) {
-                    BackHandler { trashOpen = false }
-                    TrashScreen(app)
-                } else {
-                    when (tab) {
+                when {
+                    trashOpen -> {
+                        BackHandler { trashOpen = false }
+                        TrashScreen(app)
+                    }
+                    settingsOpen -> {
+                        BackHandler { settingsOpen = false }
+                        SettingsScreen(
+                            app = app,
+                            onBack = { settingsOpen = false },
+                            onOpenTrash = { trashOpen = true },
+                        )
+                    }
+                    else -> when (tab) {
                         Tab.HOME -> HomeScreen(
                             app = app,
                             onBrowse = { path ->
@@ -136,6 +145,7 @@ fun GeymaRoot(app: GeymaApp) {
                             },
                             onOpenTimeline = { tab = Tab.TIMELINE },
                             onOpenTrash = { trashOpen = true },
+                            onOpenSettings = { settingsOpen = true },
                         )
                         Tab.FILES -> BrowserScreen(app, vm)
                         Tab.TIMELINE -> TimelineScreen(app) { path ->
@@ -146,7 +156,6 @@ fun GeymaRoot(app: GeymaApp) {
                             vm.open(path)
                             tab = Tab.FILES
                         }
-                        Tab.SETTINGS -> SettingsScreen(app, onOpenTrash = { trashOpen = true })
                     }
                 }
             }

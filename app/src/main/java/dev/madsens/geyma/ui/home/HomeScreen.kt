@@ -19,9 +19,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -53,6 +55,7 @@ fun HomeScreen(
     onBrowse: (String) -> Unit,
     onOpenTimeline: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val t = LocalTheme.current
     val context = LocalContext.current
@@ -68,8 +71,15 @@ fun HomeScreen(
         item {
             Column {
                 Spacer(Modifier.height(10.dp))
-                Text("Geyma", color = t.ink, fontWeight = FontWeight.Bold, fontSize = 24.sp)
-                Text("to keep, to guard", color = t.inkFaint, fontSize = 13.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Geyma", color = t.ink, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                        Text("to keep, to guard", color = t.inkFaint, fontSize = 13.sp)
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, "Settings", tint = t.inkSoft)
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
             }
         }
