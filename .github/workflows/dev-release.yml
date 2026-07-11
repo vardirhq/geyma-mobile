@@ -7,6 +7,12 @@ name: Dev APK release
 
 on:
   workflow_dispatch:
+  # workflow_dispatch is only registered once this file reaches the default
+  # branch, so also fire on pushes that touch this file — that lets the
+  # workflow run straight from a feature branch.
+  push:
+    paths:
+      - ".github/workflows/dev-release.yml"
 
 permissions:
   contents: write
