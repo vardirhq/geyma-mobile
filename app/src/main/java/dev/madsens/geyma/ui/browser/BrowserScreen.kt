@@ -5,6 +5,7 @@ package dev.madsens.geyma.ui.browser
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -538,33 +540,46 @@ private fun SelectionBar(
             IconButton(onClick = { vm.clearSelection() }) {
                 Icon(Icons.Filled.Close, "Clear selection", tint = t.inkSoft)
             }
-            Text("${state.selection.size} selected", color = t.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            IconButton(onClick = { vm.selectAll() }) {
-                Icon(Icons.Filled.SelectAll, "Select all", tint = t.inkSoft)
-            }
-            IconButton(onClick = { vm.starSelection(anyUnstarred) }) {
-                Icon(
-                    if (anyUnstarred) Icons.Filled.StarBorder else Icons.Filled.Star,
-                    "Star",
-                    tint = t.accent,
-                )
-            }
-            if (single) {
-                IconButton(onClick = onRename) {
-                    Icon(Icons.Filled.DriveFileRenameOutline, "Rename", tint = t.inkSoft)
+            Text(
+                "${state.selection.size} selected",
+                color = t.ink,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = { vm.selectAll() }) {
+                    Icon(Icons.Filled.SelectAll, "Select all", tint = t.inkSoft)
                 }
-            }
-            IconButton(onClick = onAddToSet) {
-                Icon(Icons.Filled.PlaylistAdd, "Add to set", tint = t.inkSoft)
-            }
-            IconButton(onClick = { vm.stageClipboard(ClipMode.COPY) }) {
-                Icon(Icons.Filled.ContentCopy, "Copy", tint = t.inkSoft)
-            }
-            IconButton(onClick = { vm.stageClipboard(ClipMode.MOVE) }) {
-                Icon(Icons.AutoMirrored.Filled.DriveFileMove, "Move", tint = t.inkSoft)
-            }
-            IconButton(onClick = { vm.trashSelection() }) {
-                Icon(Icons.Filled.Delete, "Delete", tint = DANGER)
+                IconButton(onClick = { vm.starSelection(anyUnstarred) }) {
+                    Icon(
+                        if (anyUnstarred) Icons.Filled.StarBorder else Icons.Filled.Star,
+                        "Star",
+                        tint = t.accent,
+                    )
+                }
+                if (single) {
+                    IconButton(onClick = onRename) {
+                        Icon(Icons.Filled.DriveFileRenameOutline, "Rename", tint = t.inkSoft)
+                    }
+                }
+                IconButton(onClick = onAddToSet) {
+                    Icon(Icons.Filled.PlaylistAdd, "Add to set", tint = t.inkSoft)
+                }
+                IconButton(onClick = { vm.stageClipboard(ClipMode.COPY) }) {
+                    Icon(Icons.Filled.ContentCopy, "Copy", tint = t.inkSoft)
+                }
+                IconButton(onClick = { vm.stageClipboard(ClipMode.MOVE) }) {
+                    Icon(Icons.AutoMirrored.Filled.DriveFileMove, "Move", tint = t.inkSoft)
+                }
+                IconButton(onClick = { vm.trashSelection() }) {
+                    Icon(Icons.Filled.Delete, "Delete", tint = DANGER)
+                }
             }
         }
     }
