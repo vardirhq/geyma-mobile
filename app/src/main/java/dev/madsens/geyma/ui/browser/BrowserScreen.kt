@@ -108,7 +108,7 @@ import dev.madsens.geyma.ui.components.timeAgo
 import kotlinx.coroutines.launch
 
 @Composable
-fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel) {
+fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) {
     val t = LocalTheme.current
     val state by vm.state.collectAsState()
     val context = LocalContext.current
@@ -166,7 +166,7 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel) {
                         } else if (entry.isDir) {
                             vm.open(entry.path)
                         } else {
-                            openFile(context, entry.path) { vm.noteOpened(it) }
+                            onView(entry)
                         }
                     },
                     onLongPress = { vm.toggleSelect(it.path) },
@@ -213,7 +213,7 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel) {
             onDismiss = { sheetEntry = null },
             onOpen = {
                 sheetEntry = null
-                if (entry.isDir) vm.open(entry.path) else openFile(context, entry.path) { vm.noteOpened(it) }
+                if (entry.isDir) vm.open(entry.path) else onView(entry)
             },
             onShare = { shareFile(context, entry.path) },
             onStar = {

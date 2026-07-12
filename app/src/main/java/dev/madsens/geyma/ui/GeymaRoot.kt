@@ -47,8 +47,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.madsens.geyma.GeymaApp
+import dev.madsens.geyma.files.InAppViewer
 import dev.madsens.geyma.files.StorageRoots
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.geymaBackdrop
@@ -62,10 +64,14 @@ import dev.madsens.geyma.ui.echoes.EchoesScreen
 import dev.madsens.geyma.ui.finder.FinderScreen
 import dev.madsens.geyma.ui.home.HomeScreen
 import dev.madsens.geyma.ui.sets.SetsScreen
+import dev.madsens.geyma.ui.browser.openFile
 import dev.madsens.geyma.ui.settings.SettingsScreen
 import dev.madsens.geyma.ui.sweep.SweepScreen
 import dev.madsens.geyma.ui.timeline.TimelineScreen
 import dev.madsens.geyma.ui.trash.TrashScreen
+import dev.madsens.geyma.ui.viewer.ViewerScreen
+import kotlinx.coroutines.launch
+import java.io.File
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Filled.Home),
@@ -120,9 +126,11 @@ fun GeymaRoot(
         var almanacOpen by remember { mutableStateOf(false) }
         var echoesOpen by remember { mutableStateOf(false) }
         var dossierPath by remember { mutableStateOf<String?>(null) }
+        var viewerPath by remember { mutableStateOf<String?>(null) }
+        val scope = rememberCoroutineScope()
 
         val overlayOpen = trashOpen || settingsOpen || finderOpen || sweepOpen ||
-            almanacOpen || echoesOpen || dossierPath != null
+            almanacOpen || echoesOpen || dossierPath != null || viewerPath != null
         fun closeOverlays() {
             trashOpen = false
             settingsOpen = false
@@ -131,6 +139,18 @@ fun GeymaRoot(
             almanacOpen = false
             echoesOpen = false
             dossierPath = null
+            viewerPath = null
+        }
+
+        // Tapping a file: open it inside Geyma when we have a viewer for it,
+        // otherwise fall back to the system chooser. Either way it's an "open".
+        fun openEntry(path: String) {
+            if (InAppViewer.canView(File(path).name, File(path).length())) {
+                closeOverlays()
+                viewerPath = path
+            } else {
+                openFile(context, path) { scope.launch { app.repo.recordOpen(it) } }
+            }
         }
 
         // Files shared into Geyma: copy them into the inbox, then offer a set to file them in.
@@ -170,11 +190,20 @@ fun GeymaRoot(
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when {
+                    viewerPath != null -> {
+                        BackHandler { viewerPath = null }
+                        ViewerScreen(
+                            app = app,
+                            initialPath = viewerPath!!,
+                            onBack = { viewerPath = null },
+                        )
+                    }
                     finderOpen -> {
                         BackHandler { finderOpen = false }
                         FinderScreen(
                             app = app,
                             onBack = { finderOpen = false },
+                            onView = { openEntry(it) },
                             onBrowseTo = { path ->
                                 finderOpen = false
                                 vm.open(path)
@@ -259,15 +288,19 @@ fun GeymaRoot(
                             onOpenEchoes = { echoesOpen = true },
                             onOpenDossier = { path -> dossierPath = path },
                         )
-                        Tab.FILES -> BrowserScreen(app, vm)
+                        Tab.FILES -> BrowserScreen(app, vm, onView = { openEntry(it.path) })
                         Tab.TIMELINE -> TimelineScreen(app) { path ->
                             vm.open(path)
                             tab = Tab.FILES
                         }
-                        Tab.SETS -> SetsScreen(app) { path ->
-                            vm.open(path)
-                            tab = Tab.FILES
-                        }
+                        Tab.SETS -> SetsScreen(
+                            app = app,
+                            onView = { openEntry(it) },
+                            onBrowseTo = { path ->
+                                vm.open(path)
+                                tab = Tab.FILES
+                            },
+                        )
                     }
                 }
             }

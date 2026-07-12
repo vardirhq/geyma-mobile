@@ -31,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,7 +39,6 @@ import dev.madsens.geyma.GeymaApp
 import dev.madsens.geyma.files.PathUtils
 import dev.madsens.geyma.files.SearchHit
 import dev.madsens.geyma.theme.LocalTheme
-import dev.madsens.geyma.ui.browser.openFile
 import dev.madsens.geyma.ui.components.EmptyState
 import dev.madsens.geyma.ui.components.EventGlyph
 import dev.madsens.geyma.ui.components.EventUi
@@ -55,9 +53,8 @@ import java.io.File
  * or trashed, and the result tells you where it went.
  */
 @Composable
-fun FinderScreen(app: GeymaApp, onBack: () -> Unit, onBrowseTo: (String) -> Unit) {
+fun FinderScreen(app: GeymaApp, onBack: () -> Unit, onView: (String) -> Unit, onBrowseTo: (String) -> Unit) {
     val t = LocalTheme.current
-    val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<SearchHit>>(emptyList()) }
 
@@ -103,7 +100,7 @@ fun FinderScreen(app: GeymaApp, onBack: () -> Unit, onBrowseTo: (String) -> Unit
                         onClick = {
                             when {
                                 hit.exists && File(hit.path).isDirectory -> onBrowseTo(hit.path)
-                                hit.exists -> openFile(context, hit.path)
+                                hit.exists -> onView(hit.path)
                                 else -> PathUtils.parentOf(hit.path)?.let { parent ->
                                     if (File(parent).isDirectory) onBrowseTo(parent)
                                 }
