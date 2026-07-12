@@ -88,3 +88,16 @@ data class SetItem(
     val path: String,
     val addedMs: Long = System.currentTimeMillis(),
 )
+
+/**
+ * A file the user asked Geyma to resurface later — a memory with an alarm on
+ * it. It reappears on Home once [dueMs] passes; the reference is kept synced
+ * through moves and renames like everything else Geyma guards.
+ */
+@Entity(tableName = "revisits")
+data class Revisit(
+    @PrimaryKey val path: String,
+    val dueMs: Long,
+    val note: String? = null,
+    val createdMs: Long = System.currentTimeMillis(),
+)

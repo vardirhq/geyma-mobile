@@ -3,13 +3,22 @@ package dev.madsens.geyma.files
 import dev.madsens.geyma.data.EventActions
 import dev.madsens.geyma.data.FileEvent
 import dev.madsens.geyma.data.GeymaDb
+import dev.madsens.geyma.data.Revisit
 import dev.madsens.geyma.data.SeenFile
 import dev.madsens.geyma.data.Star
 import dev.madsens.geyma.data.TrashEntry
+import dev.madsens.geyma.insights.Almanac
+import dev.madsens.geyma.insights.AlmanacStats
+import dev.madsens.geyma.insights.Dossier
+import dev.madsens.geyma.insights.DossierSummary
+import dev.madsens.geyma.insights.DuplicateGroup
+import dev.madsens.geyma.insights.Echoes
+import dev.madsens.geyma.insights.FileFingerprint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -67,6 +76,7 @@ class FsRepository(private val db: GeymaDb) {
     private val trash get() = db.trash()
     private val sets get() = db.sets()
     private val seen get() = db.seen()
+    private val revisits get() = db.revisits()
 
     val trashDir: File = File(StorageRoots.primaryPath(), ".geyma/trash")
 
@@ -108,6 +118,105 @@ class FsRepository(private val db: GeymaDb) {
     }
 
     suspend fun historyFor(path: String): List<FileEvent> = events.forPath(path)
+
+    /**
+     * A portrait of the journal over the last [days] days — headline counts, a
+     * daily activity sparkline, and the busiest folders and files. Pure
+     * aggregation lives in [Almanac]; here we just gather the rows.
+     */
+    suspend fun almanac(days: Int = 14): AlmanacStats = withContext(Dispatchers.IO) {
+        val since = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(days.toLong())
+        Almanac.compute(
+            events = events.since(since),
+            neglected = seen.neverOpenedCount(),
+            nowMs = System.currentTimeMillis(),
+            days = days,
+        )
+    }
+
+    /** Everything Geyma remembers about one file — its whole biography. */
+    suspend fun dossier(path: String): DossierSummary = withContext(Dispatchers.IO) {
+        Dossier.summarize(
+            path = path,
+            events = events.forPath(path),
+            starred = stars.isStarred(path),
+            setNames = sets.setsContaining(path).map { it.name },
+            seen = seen.byPath(path),
+            exists = File(path).exists(),
+        )
+    }
+
+    /**
+     * Find byte-for-byte duplicate files under [roots]. Sizes are collected on a
+     * single walk; only files that share a size are hashed, so unique files are
+     * never read. The grouping and ranking are [Echoes]. Trash and dot-folders
+     * are skipped — Geyma doesn't propose cleaning up its own bookkeeping.
+     */
+    suspend fun findDuplicates(roots: List<String>): List<DuplicateGroup> = withContext(Dispatchers.IO) {
+        val bySize = HashMap<Long, MutableList<File>>()
+        val trashPath = trashDir.absolutePath
+        for (root in roots) {
+            walkFiles(File(root), trashPath) { f ->
+                if (f.length() > 0) bySize.getOrPut(f.length()) { ArrayList() }.add(f)
+            }
+        }
+        val fingerprints = ArrayList<FileFingerprint>()
+        for ((size, files) in bySize) {
+            if (files.size < 2) continue // a lone file of its size can't be a duplicate
+            for (f in files) {
+                val hash = runCatching { hashOf(f) }.getOrNull() ?: continue
+                fingerprints.add(
+                    FileFingerprint(
+                        path = f.absolutePath,
+                        name = f.name,
+                        size = size,
+                        hash = hash,
+                        kind = FileKind.ofName(f.name, false),
+                        modifiedMs = f.lastModified(),
+                    ),
+                )
+            }
+        }
+        Echoes.group(fingerprints)
+    }
+
+    private inline fun walkFiles(root: File, trashPath: String, onFile: (File) -> Unit) {
+        if (!root.exists()) return
+        val stack = ArrayDeque<File>()
+        stack.addLast(root)
+        while (stack.isNotEmpty()) {
+            val dir = stack.removeLast()
+            val kids = dir.listFiles() ?: continue
+            for (f in kids) {
+                if (f.name.startsWith(".")) continue // hidden files and Geyma's own .geyma tree
+                if (f.absolutePath == trashPath) continue
+                when {
+                    f.isDirectory -> stack.addLast(f)
+                    f.isFile -> onFile(f)
+                }
+            }
+        }
+    }
+
+    private fun hashOf(file: File): String {
+        val digest = MessageDigest.getInstance("MD5")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buf)
+                if (read < 0) break
+                digest.update(buf, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    suspend fun revisitFor(path: String): Revisit? = revisits.byPath(path)
+
+    suspend fun scheduleRevisit(path: String, dueMs: Long, note: String? = null) =
+        revisits.set(Revisit(path = path, dueMs = dueMs, note = note))
+
+    suspend fun clearRevisit(path: String) = revisits.clear(path)
 
     /**
      * Journal-wide search: matches live files by name plus anything Geyma
@@ -314,6 +423,7 @@ class FsRepository(private val db: GeymaDb) {
                 log(EventActions.TRASHED, dst.absolutePath, prevPath = path, detail = "to trash", isDir = isDir)
                 stars.removeTree(path)
                 seen.removeTree(path)
+                revisits.removeTree(path)
                 trashed++
             }
             trashed
@@ -380,6 +490,7 @@ class FsRepository(private val db: GeymaDb) {
         stars.rebasePaths(oldBase, newBase)
         sets.rebasePaths(oldBase, newBase)
         seen.rebasePaths(oldBase, newBase)
+        revisits.rebasePaths(oldBase, newBase)
     }
 
     private suspend fun log(

@@ -53,9 +53,12 @@ import dev.madsens.geyma.files.StorageRoots
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.geymaBackdrop
 import dev.madsens.geyma.theme.onAccent
+import dev.madsens.geyma.ui.almanac.AlmanacScreen
 import dev.madsens.geyma.ui.browser.AddToSetDialog
 import dev.madsens.geyma.ui.browser.BrowserScreen
 import dev.madsens.geyma.ui.browser.BrowserViewModel
+import dev.madsens.geyma.ui.dossier.DossierScreen
+import dev.madsens.geyma.ui.echoes.EchoesScreen
 import dev.madsens.geyma.ui.finder.FinderScreen
 import dev.madsens.geyma.ui.home.HomeScreen
 import dev.madsens.geyma.ui.sets.SetsScreen
@@ -114,6 +117,21 @@ fun GeymaRoot(
         var settingsOpen by remember { mutableStateOf(false) }
         var finderOpen by remember { mutableStateOf(false) }
         var sweepOpen by remember { mutableStateOf(false) }
+        var almanacOpen by remember { mutableStateOf(false) }
+        var echoesOpen by remember { mutableStateOf(false) }
+        var dossierPath by remember { mutableStateOf<String?>(null) }
+
+        val overlayOpen = trashOpen || settingsOpen || finderOpen || sweepOpen ||
+            almanacOpen || echoesOpen || dossierPath != null
+        fun closeOverlays() {
+            trashOpen = false
+            settingsOpen = false
+            finderOpen = false
+            sweepOpen = false
+            almanacOpen = false
+            echoesOpen = false
+            dossierPath = null
+        }
 
         // Files shared into Geyma: copy them into the inbox, then offer a set to file them in.
         var intakePaths by remember { mutableStateOf<List<String>?>(null) }
@@ -131,12 +149,9 @@ fun GeymaRoot(
                 NavigationBar(containerColor = t.surface) {
                     for (candidate in Tab.entries) {
                         NavigationBarItem(
-                            selected = tab == candidate && !trashOpen && !settingsOpen && !finderOpen && !sweepOpen,
+                            selected = tab == candidate && !overlayOpen,
                             onClick = {
-                                trashOpen = false
-                                settingsOpen = false
-                                finderOpen = false
-                                sweepOpen = false
+                                closeOverlays()
                                 tab = candidate
                             },
                             icon = { Icon(candidate.icon, candidate.label) },
@@ -178,6 +193,43 @@ fun GeymaRoot(
                             },
                         )
                     }
+                    dossierPath != null -> {
+                        BackHandler { dossierPath = null }
+                        DossierScreen(
+                            app = app,
+                            path = dossierPath!!,
+                            onBack = { dossierPath = null },
+                            onBrowse = { path ->
+                                dossierPath = null
+                                vm.open(path)
+                                tab = Tab.FILES
+                            },
+                        )
+                    }
+                    almanacOpen -> {
+                        BackHandler { almanacOpen = false }
+                        AlmanacScreen(
+                            app = app,
+                            onBack = { almanacOpen = false },
+                            onBrowse = { path ->
+                                almanacOpen = false
+                                vm.open(path)
+                                tab = Tab.FILES
+                            },
+                            onOpenDossier = { path -> dossierPath = path },
+                        )
+                    }
+                    echoesOpen -> {
+                        BackHandler { echoesOpen = false }
+                        EchoesScreen(
+                            app = app,
+                            onBack = { echoesOpen = false },
+                            onOpenTrash = {
+                                echoesOpen = false
+                                trashOpen = true
+                            },
+                        )
+                    }
                     trashOpen -> {
                         BackHandler { trashOpen = false }
                         TrashScreen(app)
@@ -202,6 +254,9 @@ fun GeymaRoot(
                             onOpenSettings = { settingsOpen = true },
                             onOpenFinder = { finderOpen = true },
                             onOpenSweep = { sweepOpen = true },
+                            onOpenAlmanac = { almanacOpen = true },
+                            onOpenEchoes = { echoesOpen = true },
+                            onOpenDossier = { path -> dossierPath = path },
                         )
                         Tab.FILES -> BrowserScreen(app, vm)
                         Tab.TIMELINE -> TimelineScreen(app) { path ->

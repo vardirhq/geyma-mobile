@@ -59,6 +59,13 @@ interface EventDao {
 
     @Query("DELETE FROM events WHERE whenMs < :beforeMs")
     suspend fun prune(beforeMs: Long)
+
+    /** Everything remembered since [sinceMs], newest first — feeds the Almanac. */
+    @Query("SELECT * FROM events WHERE whenMs >= :sinceMs ORDER BY whenMs DESC")
+    suspend fun since(sinceMs: Long): List<FileEvent>
+
+    @Query("SELECT COUNT(*) FROM events")
+    suspend fun count(): Int
 }
 
 @Dao
@@ -124,6 +131,9 @@ interface SeenDao {
     @Query("SELECT * FROM seen_files WHERE lastOpenedMs IS NULL ORDER BY firstSeenMs ASC")
     suspend fun neverOpened(): List<SeenFile>
 
+    @Query("SELECT COUNT(*) FROM seen_files WHERE lastOpenedMs IS NULL")
+    suspend fun neverOpenedCount(): Int
+
     @Query("DELETE FROM seen_files WHERE path = :path")
     suspend fun remove(path: String)
 
@@ -178,4 +188,35 @@ interface SetDao {
             "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
     )
     suspend fun rebasePaths(oldBase: String, newBase: String)
+
+    /** Sets that currently hold [path] — for a file's dossier. */
+    @Query(
+        "SELECT s.* FROM sets s INNER JOIN set_items i ON s.id = i.setId " +
+            "WHERE i.path = :path ORDER BY s.createdMs DESC",
+    )
+    suspend fun setsContaining(path: String): List<WorkingSet>
+}
+
+@Dao
+interface RevisitDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun set(revisit: Revisit)
+
+    @Query("DELETE FROM revisits WHERE path = :path")
+    suspend fun clear(path: String)
+
+    @Query("SELECT * FROM revisits ORDER BY dueMs ASC")
+    fun all(): Flow<List<Revisit>>
+
+    @Query("SELECT * FROM revisits WHERE path = :path")
+    suspend fun byPath(path: String): Revisit?
+
+    @Query(
+        "UPDATE OR REPLACE revisits SET path = :newBase || substr(path, length(:oldBase) + 1) " +
+            "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
+    )
+    suspend fun rebasePaths(oldBase: String, newBase: String)
+
+    @Query("DELETE FROM revisits WHERE path = :path OR path LIKE :path || '/%'")
+    suspend fun removeTree(path: String)
 }
