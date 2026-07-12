@@ -18,6 +18,19 @@ Native Kotlin + Jetpack Compose, sharing the desktop app's design language and c
 - **Sweep** — cleanup ranked by neglect instead of size: files that arrived and were
   never opened, oldest first. Because trash remembers origins, a sweep is fully
   reversible — restore any of it with one tap.
+- **Dossier** — a per-file biography: where it arrived from, everywhere it has been
+  (moves and renames it lived through), how often it was opened, which sets hold it,
+  and its full journal timeline — reached by tapping any file in the recent activity
+  or the Almanac.
+- **Almanac** — the journal looking back at itself: a two-week activity sparkline,
+  how much arrived versus how much was ever opened, and the busiest folders and
+  most-handled files, each a tap away from its dossier.
+- **Echoes** — byte-for-byte duplicate finder, framed as the journal noticing the
+  same file twice. The oldest copy in each set is kept; the redundant echoes sweep to
+  trash and, like every sweep, come back with one tap.
+- **Revisit** — ask any file to resurface: schedule it from its dossier and it
+  reappears in a "Back for you" shelf on Home when its moment arrives. The reminder
+  follows the file through moves and renames like everything else Geyma guards.
 - **Ghost trails** — folders show faint dashed markers where files recently departed,
   with where they went and when.
 - **Working sets** — playlist-like collections of file *references* that stay in sync
@@ -44,7 +57,7 @@ one thing that ever leaves is a continuity bundle you explicitly share.
 
 ```bash
 ./gradlew assembleDebug        # debug APK at app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # JVM unit tests (path utils, kinds, theme resolution)
+./gradlew testDebugUnitTest    # JVM unit tests (path utils, kinds, theme, insights)
 ./gradlew lintDebug
 ```
 

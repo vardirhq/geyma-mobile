@@ -17,9 +17,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MoveToInbox
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -32,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +47,9 @@ import androidx.compose.ui.unit.sp
 import dev.madsens.geyma.GeymaApp
 import dev.madsens.geyma.files.PathUtils
 import dev.madsens.geyma.files.StorageRoots
+import dev.madsens.geyma.insights.Revisits
 import dev.madsens.geyma.theme.LocalTheme
+import kotlinx.coroutines.launch
 import dev.madsens.geyma.ui.components.EventGlyph
 import dev.madsens.geyma.ui.components.EventUi
 import dev.madsens.geyma.ui.components.GeymaCard
@@ -61,14 +67,22 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenFinder: () -> Unit,
     onOpenSweep: () -> Unit,
+    onOpenAlmanac: () -> Unit,
+    onOpenEchoes: () -> Unit,
+    onOpenDossier: (String) -> Unit,
 ) {
     val t = LocalTheme.current
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val roots = remember { StorageRoots.list(context) }
     val recent by app.db.events().recent(6).collectAsState(initial = emptyList())
     val arrivals by app.db.events().recentArrivals(5).collectAsState(initial = emptyList())
     val stars by app.db.stars().all().collectAsState(initial = emptyList())
     val trashCount by app.db.trash().all().collectAsState(initial = emptyList())
+    val revisits by app.db.revisits().all().collectAsState(initial = emptyList())
+    val dueRevisits = remember(revisits) {
+        Revisits.partition(revisits, System.currentTimeMillis()) { it.dueMs }.first
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -101,6 +115,51 @@ fun HomeScreen(
                     Text("Find a file you had…", color = t.inkFaint, fontSize = 14.sp)
                 }
                 Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        if (dueRevisits.isNotEmpty()) {
+            item { SectionHeader("Back for you") }
+            item {
+                GeymaCard(modifier = Modifier.fillMaxWidth()) {
+                    for (revisit in dueRevisits) {
+                        val f = remember(revisit.path) { File(revisit.path) }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onOpenDossier(revisit.path) }
+                                .padding(vertical = 6.dp),
+                        ) {
+                            Icon(Icons.Filled.NotificationsActive, null, tint = t.accent, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    PathUtils.nameOf(revisit.path),
+                                    color = t.ink,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    if (f.exists()) "you asked to revisit this" else "no longer where it was",
+                                    color = t.inkFaint,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                            Text(
+                                "Done",
+                                color = t.accent,
+                                fontSize = 12.sp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { scope.launch { app.repo.clearRevisit(revisit.path) } }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -217,6 +276,30 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(geymaShape())
+                        .clickable { onOpenEchoes() }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Filled.ContentCopy, null, tint = t.inkSoft, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Echoes — find duplicates", color = t.ink, modifier = Modifier.weight(1f))
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(geymaShape())
+                        .clickable { onOpenAlmanac() }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Filled.Insights, null, tint = t.inkSoft, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Almanac — journal insights", color = t.ink, modifier = Modifier.weight(1f))
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(geymaShape())
                         .clickable { onOpenTrash() }
                         .padding(horizontal = 10.dp, vertical = 10.dp),
                 ) {
@@ -283,7 +366,11 @@ fun HomeScreen(
                     for (event in recent) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onOpenDossier(event.path) }
+                                .padding(vertical = 5.dp),
                         ) {
                             EventGlyph(event.action, t.inkSoft)
                             Spacer(Modifier.width(10.dp))
