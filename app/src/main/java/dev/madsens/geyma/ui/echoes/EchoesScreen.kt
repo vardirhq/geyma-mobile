@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -79,8 +80,11 @@ fun EchoesScreen(
     val t = LocalTheme.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var groups by remember { mutableStateOf<List<DuplicateGroup>?>(null) }
-    var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // Seed from the cached scan so returning from a dossier is instant, not a rescan.
+    var groups by remember { mutableStateOf(app.echoesCache) }
+    var selection by remember {
+        mutableStateOf(app.echoesCache?.flatMap { g -> g.echoes.map { it.path } }?.toSet() ?: emptySet())
+    }
     var justCleared by remember { mutableStateOf(0) }
     var progress by remember { mutableStateOf<ScanProgress?>(null) }
 
@@ -93,9 +97,11 @@ fun EchoesScreen(
         // Pre-select every echo (never the original) so one tap clears redundancy.
         selection = found.flatMap { g -> g.echoes.map { it.path } }.toSet()
         groups = found
+        app.echoesCache = found
     }
 
-    LaunchedEffect(Unit) { scan() }
+    // Only scan when there's no cached result to reuse.
+    LaunchedEffect(Unit) { if (groups == null) scan() }
 
     val list = groups
     val selectedFiles = list.orEmpty().flatMap { it.files }.filter { it.path in selection }
@@ -110,6 +116,11 @@ fun EchoesScreen(
             Column(Modifier.weight(1f)) {
                 Text("Echoes", color = t.ink, fontWeight = FontWeight.Bold, fontSize = 24.sp)
                 Text("The same file, kept more than once", color = t.inkFaint, fontSize = 13.sp)
+            }
+            if (list != null) {
+                IconButton(onClick = { scope.launch { scan() } }) {
+                    Icon(Icons.Filled.Refresh, "Rescan", tint = t.inkSoft)
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
