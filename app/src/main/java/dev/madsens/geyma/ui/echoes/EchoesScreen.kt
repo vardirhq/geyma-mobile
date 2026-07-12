@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.RestoreFromTrash
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -38,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +49,8 @@ import dev.madsens.geyma.insights.DuplicateGroup
 import dev.madsens.geyma.insights.Echoes
 import dev.madsens.geyma.insights.FileFingerprint
 import dev.madsens.geyma.files.PathUtils
+import dev.madsens.geyma.files.ScanPhase
+import dev.madsens.geyma.files.ScanProgress
 import dev.madsens.geyma.files.StorageRoots
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.itemColors
@@ -69,12 +74,14 @@ fun EchoesScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
     var groups by remember { mutableStateOf<List<DuplicateGroup>?>(null) }
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var justCleared by remember { mutableStateOf(0) }
+    var progress by remember { mutableStateOf<ScanProgress?>(null) }
 
     suspend fun scan() {
         groups = null
         selection = emptySet()
+        progress = null
         val roots = StorageRoots.list(context).map { it.path }
-        val found = app.repo.findDuplicates(roots)
+        val found = app.repo.findDuplicates(roots) { progress = it }
         // Pre-select every echo (never the original) so one tap clears redundancy.
         selection = found.flatMap { g -> g.echoes.map { it.path } }.toSet()
         groups = found
@@ -100,7 +107,7 @@ fun EchoesScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         when {
-            list == null -> EmptyState("Listening for echoes across your storage…")
+            list == null -> ScanningState(progress)
             list.isEmpty() -> {
                 if (justCleared > 0) {
                     ClearedCard(justCleared, onOpenTrash)
@@ -254,6 +261,45 @@ private fun CopyRow(file: FileFingerprint, kept: Boolean, selected: Boolean, onT
                 tint = if (selected) t.accent else t.inkFaint,
                 modifier = Modifier.size(20.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun ScanningState(progress: ScanProgress?) {
+    val t = LocalTheme.current
+    Column(
+        Modifier.fillMaxWidth().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(color = t.accent, strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
+        Spacer(Modifier.height(16.dp))
+        val text = when (progress?.phase) {
+            null, ScanPhase.WALKING -> {
+                val n = progress?.done ?: 0
+                if (n == 0) "Scanning your storage…" else "Scanning your storage — $n files so far…"
+            }
+            ScanPhase.COMPARING ->
+                "Comparing ${progress.done} of ${progress.total} look-alike${if (progress.total == 1) "" else "s"}…"
+        }
+        Text(text, color = t.inkSoft, fontSize = 14.sp, textAlign = TextAlign.Center)
+        if (progress?.phase == ScanPhase.COMPARING && progress.total > 0) {
+            Spacer(Modifier.height(14.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(t.ink.copy(alpha = 0.08f)),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth((progress.done.toFloat() / progress.total).coerceIn(0f, 1f))
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(t.accent),
+                )
+            }
         }
     }
 }

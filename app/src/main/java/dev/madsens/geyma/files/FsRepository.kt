@@ -54,6 +54,12 @@ data class SearchHit(
     val prevPath: String?,
 )
 
+/** Which stage an Echoes scan is in, for progress feedback. */
+enum class ScanPhase { WALKING, COMPARING }
+
+/** Live progress of a duplicate scan: [done] of [total] in the current [phase]. */
+data class ScanProgress(val phase: ScanPhase, val done: Int, val total: Int)
+
 /** A neglected arrival surfaced on the Sweep screen. */
 data class SweepItem(
     val name: String,
@@ -151,31 +157,48 @@ class FsRepository(private val db: GeymaDb) {
      * single walk; only files that share a size are hashed, so unique files are
      * never read. The grouping and ranking are [Echoes]. Trash and dot-folders
      * are skipped — Geyma doesn't propose cleaning up its own bookkeeping.
+     *
+     * [onProgress] is invoked on a background thread as the walk and the hashing
+     * advance, so the caller can show it isn't frozen; it's throttled here so the
+     * UI isn't flooded.
      */
-    suspend fun findDuplicates(roots: List<String>): List<DuplicateGroup> = withContext(Dispatchers.IO) {
+    suspend fun findDuplicates(
+        roots: List<String>,
+        onProgress: (ScanProgress) -> Unit = {},
+    ): List<DuplicateGroup> = withContext(Dispatchers.IO) {
         val bySize = HashMap<Long, MutableList<File>>()
         val trashPath = trashDir.absolutePath
+        var seen = 0
         for (root in roots) {
             walkFiles(File(root), trashPath) { f ->
                 if (f.length() > 0) bySize.getOrPut(f.length()) { ArrayList() }.add(f)
+                seen++
+                if (seen % 200 == 0) onProgress(ScanProgress(ScanPhase.WALKING, seen, 0))
             }
         }
-        val fingerprints = ArrayList<FileFingerprint>()
-        for ((size, files) in bySize) {
-            if (files.size < 2) continue // a lone file of its size can't be a duplicate
-            for (f in files) {
-                val hash = runCatching { hashOf(f) }.getOrNull() ?: continue
-                fingerprints.add(
-                    FileFingerprint(
-                        path = f.absolutePath,
-                        name = f.name,
-                        size = size,
-                        hash = hash,
-                        kind = FileKind.ofName(f.name, false),
-                        modifiedMs = f.lastModified(),
-                    ),
-                )
+        // Only files sharing a size with another can be duplicates; the rest are
+        // never read. Hashing is the slow part, so it drives the progress bar.
+        val candidates = bySize.values.filter { it.size >= 2 }.flatten()
+        onProgress(ScanProgress(ScanPhase.COMPARING, 0, candidates.size))
+        val fingerprints = ArrayList<FileFingerprint>(candidates.size)
+        var hashed = 0
+        for (f in candidates) {
+            val hash = runCatching { hashOf(f) }.getOrNull()
+            hashed++
+            if (hashed % 5 == 0 || hashed == candidates.size) {
+                onProgress(ScanProgress(ScanPhase.COMPARING, hashed, candidates.size))
             }
+            if (hash == null) continue
+            fingerprints.add(
+                FileFingerprint(
+                    path = f.absolutePath,
+                    name = f.name,
+                    size = f.length(),
+                    hash = hash,
+                    kind = FileKind.ofName(f.name, false),
+                    modifiedMs = f.lastModified(),
+                ),
+            )
         }
         Echoes.group(fingerprints)
     }
@@ -189,9 +212,14 @@ class FsRepository(private val db: GeymaDb) {
             val kids = dir.listFiles() ?: continue
             for (f in kids) {
                 if (f.name.startsWith(".")) continue // hidden files and Geyma's own .geyma tree
-                if (f.absolutePath == trashPath) continue
+                val path = f.absolutePath
+                if (path == trashPath) continue
                 when {
-                    f.isDirectory -> stack.addLast(f)
+                    // Android/data and Android/obb are per-app sandboxes: unreadable
+                    // on Android 11+ and never a source of user-facing duplicates.
+                    f.isDirectory -> if (!path.endsWith("/Android/data") && !path.endsWith("/Android/obb")) {
+                        stack.addLast(f)
+                    }
                     f.isFile -> onFile(f)
                 }
             }
