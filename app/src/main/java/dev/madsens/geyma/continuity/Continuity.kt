@@ -104,7 +104,10 @@ class Continuity(private val context: Context, private val db: GeymaDb) {
      * bundle's storage root onto this device's so they resolve locally.
      */
     suspend fun import(input: InputStream): Summary = withContext(Dispatchers.IO) {
-        val text = input.bufferedReader().use { it.readText() }
+        // A bundle is plain JSON that we parse fully in memory, so cap how much a
+        // (possibly malformed or hostile) file can pull in before we ever build
+        // the tree. Real exports are a few MB even with long histories.
+        val text = input.readBoundedText(MAX_BUNDLE_BYTES)
         val root = JSONObject(text)
         require(root.optString("format") == "geyma-bundle") { "Not a Geyma bundle" }
 
@@ -179,4 +182,27 @@ class Continuity(private val context: Context, private val db: GeymaDb) {
 
         Summary(events = events, stars = stars, sets = sets, items = items)
     }
+
+    private companion object {
+        /** Reject bundles larger than this before parsing — see [import]. */
+        const val MAX_BUNDLE_BYTES = 64L * 1024 * 1024
+    }
+}
+
+/**
+ * Read a UTF-8 stream into a string, failing fast once more than [maxBytes]
+ * have been consumed so a huge or malformed file can't exhaust memory.
+ */
+private fun InputStream.readBoundedText(maxBytes: Long): String = buffered().use { source ->
+    val out = java.io.ByteArrayOutputStream()
+    val buf = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        val read = source.read(buf)
+        if (read < 0) break
+        total += read
+        require(total <= maxBytes) { "Bundle is too large to import" }
+        out.write(buf, 0, read)
+    }
+    out.toString(Charsets.UTF_8.name())
 }

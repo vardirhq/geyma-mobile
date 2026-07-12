@@ -41,8 +41,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk geyma-mobile-dev.apk
-          gh release delete dev --yes || true
-          git push --delete origin dev || true
+          # Delete the old release and its "dev" tag together. Scoping the tag
+          # removal to the release avoids a raw `git push --delete origin dev`,
+          # which would also delete a branch named dev if one ever existed.
+          gh release delete dev --cleanup-tag --yes || true
           gh release create dev geyma-mobile-dev.apk \
             --title "Geyma Mobile dev build" \
             --notes "Debug-signed APK built from ${GITHUB_SHA}. Testing only — signed with a throwaway debug key, so you may need to uninstall a previous dev build before installing a new one." \

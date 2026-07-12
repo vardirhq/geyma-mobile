@@ -64,9 +64,6 @@ interface EventDao {
     /** Everything remembered since [sinceMs], newest first — feeds the Almanac. */
     @Query("SELECT * FROM events WHERE whenMs >= :sinceMs ORDER BY whenMs DESC")
     suspend fun since(sinceMs: Long): List<FileEvent>
-
-    @Query("SELECT COUNT(*) FROM events")
-    suspend fun count(): Int
 }
 
 @Dao
