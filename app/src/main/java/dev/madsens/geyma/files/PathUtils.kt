@@ -62,6 +62,15 @@ object PathUtils {
         }
     }
 
+    /**
+     * Escapes a string for use as the operand of a SQL `LIKE ... ESCAPE '\'`
+     * clause. `%` and `_` are legal filename characters but SQL wildcards, so a
+     * folder named "50%off" or "a_b" would otherwise match unrelated paths when
+     * rebasing or removing a subtree. Callers must pair this with `ESCAPE '\'`.
+     */
+    fun escapeLike(s: String): String =
+        s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
     fun humanSize(bytes: Long): String {
         if (bytes < 0) return "—"
         if (bytes < 1024) return "$bytes B"

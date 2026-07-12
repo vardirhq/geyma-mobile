@@ -25,7 +25,7 @@ object ShareIntake {
             val detail = if (fromApp.isNullOrBlank()) "shared to Geyma" else "shared from $fromApp"
             val paths = ArrayList<String>()
             for (uri in uris) {
-                val name = displayName(context, uri) ?: "shared-${System.currentTimeMillis()}"
+                val name = safeName(displayName(context, uri))
                 val unique = PathUtils.uniqueChildName(inbox.list()?.toSet() ?: emptySet(), name)
                 val dest = File(inbox, unique)
                 val ok = runCatching {
@@ -40,6 +40,19 @@ object ShareIntake {
             }
             paths
         }
+
+    /**
+     * The display name comes from another app and is untrusted: collapse it to a
+     * bare filename so a value like "../../evil.apk" can't escape the inbox.
+     */
+    private fun safeName(raw: String?): String {
+        val base = raw?.let { File(it).name }?.trim().orEmpty()
+        return if (base.isEmpty() || base == "." || base == "..") {
+            "shared-${System.currentTimeMillis()}"
+        } else {
+            base
+        }
+    }
 
     private fun displayName(context: Context, uri: Uri): String? {
         if (uri.scheme == "file") return uri.lastPathSegment

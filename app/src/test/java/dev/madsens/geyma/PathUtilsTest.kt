@@ -71,6 +71,16 @@ class PathUtilsTest {
     }
 
     @Test
+    fun escapeLike_neutralizesWildcards() {
+        // % and _ are legal filename chars but SQL wildcards; they must be escaped.
+        assertEquals("50\\%off", PathUtils.escapeLike("50%off"))
+        assertEquals("a\\_b", PathUtils.escapeLike("a_b"))
+        // The escape char itself is escaped first so it can't be double-interpreted.
+        assertEquals("a\\\\b", PathUtils.escapeLike("a\\b"))
+        assertEquals("/storage/emulated/0/Download", PathUtils.escapeLike("/storage/emulated/0/Download"))
+    }
+
+    @Test
     fun humanSize_formatsAcrossUnits() {
         assertEquals("0 B", PathUtils.humanSize(0))
         assertEquals("512 B", PathUtils.humanSize(512))

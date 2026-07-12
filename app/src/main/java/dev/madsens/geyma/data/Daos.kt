@@ -29,7 +29,8 @@ interface EventDao {
      */
     @Query(
         "SELECT * FROM events WHERE " +
-            "path LIKE '%' || :q || '%' OR prevPath LIKE '%' || :q || '%' OR detail LIKE '%' || :q || '%' " +
+            "path LIKE '%' || :q || '%' ESCAPE '\\' OR prevPath LIKE '%' || :q || '%' ESCAPE '\\' " +
+            "OR detail LIKE '%' || :q || '%' ESCAPE '\\' " +
             "ORDER BY whenMs DESC LIMIT 400",
     )
     suspend fun search(q: String): List<FileEvent>
@@ -45,17 +46,17 @@ interface EventDao {
      */
     @Query(
         "SELECT * FROM events WHERE action IN ('moved','renamed','trashed') " +
-            "AND prevPath LIKE :dir || '/%' AND prevPath NOT LIKE :dir || '/%/%' " +
+            "AND prevPath LIKE :dirLike || '/%' ESCAPE '\\' AND prevPath NOT LIKE :dirLike || '/%/%' ESCAPE '\\' " +
             "AND whenMs > :sinceMs ORDER BY whenMs DESC LIMIT 30",
     )
-    suspend fun departuresFrom(dir: String, sinceMs: Long): List<FileEvent>
+    suspend fun departuresFrom(dirLike: String, sinceMs: Long): List<FileEvent>
 
     /** Rewrite journal paths after a move/rename so timelines follow the file. */
     @Query(
         "UPDATE events SET path = :newBase || substr(path, length(:oldBase) + 1) " +
-            "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
     )
-    suspend fun rebasePaths(oldBase: String, newBase: String)
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
 
     @Query("DELETE FROM events WHERE whenMs < :beforeMs")
     suspend fun prune(beforeMs: Long)
@@ -90,12 +91,12 @@ interface StarDao {
 
     @Query(
         "UPDATE OR REPLACE stars SET path = :newBase || substr(path, length(:oldBase) + 1) " +
-            "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
     )
-    suspend fun rebasePaths(oldBase: String, newBase: String)
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
 
-    @Query("DELETE FROM stars WHERE path = :path OR path LIKE :path || '/%'")
-    suspend fun removeTree(path: String)
+    @Query("DELETE FROM stars WHERE path = :path OR path LIKE :pathLike || '/%' ESCAPE '\\'")
+    suspend fun removeTree(path: String, pathLike: String)
 }
 
 @Dao
@@ -139,12 +140,12 @@ interface SeenDao {
 
     @Query(
         "UPDATE OR REPLACE seen_files SET path = :newBase || substr(path, length(:oldBase) + 1) " +
-            "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
     )
-    suspend fun rebasePaths(oldBase: String, newBase: String)
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
 
-    @Query("DELETE FROM seen_files WHERE path = :path OR path LIKE :path || '/%'")
-    suspend fun removeTree(path: String)
+    @Query("DELETE FROM seen_files WHERE path = :path OR path LIKE :pathLike || '/%' ESCAPE '\\'")
+    suspend fun removeTree(path: String, pathLike: String)
 }
 
 @Dao
@@ -185,9 +186,9 @@ interface SetDao {
     /** Keeps set references synced through moves and renames, like the desktop. */
     @Query(
         "UPDATE OR REPLACE set_items SET path = :newBase || substr(path, length(:oldBase) + 1) " +
-            "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
     )
-    suspend fun rebasePaths(oldBase: String, newBase: String)
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
 
     /** Sets that currently hold [path] — for a file's dossier. */
     @Query(
@@ -213,10 +214,10 @@ interface RevisitDao {
 
     @Query(
         "UPDATE OR REPLACE revisits SET path = :newBase || substr(path, length(:oldBase) + 1) " +
-            "WHERE path = :oldBase OR path LIKE :oldBase || '/%'",
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
     )
-    suspend fun rebasePaths(oldBase: String, newBase: String)
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
 
-    @Query("DELETE FROM revisits WHERE path = :path OR path LIKE :path || '/%'")
-    suspend fun removeTree(path: String)
+    @Query("DELETE FROM revisits WHERE path = :path OR path LIKE :pathLike || '/%' ESCAPE '\\'")
+    suspend fun removeTree(path: String, pathLike: String)
 }

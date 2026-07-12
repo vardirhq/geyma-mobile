@@ -121,7 +121,7 @@ class FsRepository(private val db: GeymaDb) {
     }
 
     suspend fun ghostsFor(dir: String, sinceMs: Long): List<GhostTrail> = withContext(Dispatchers.IO) {
-        events.departuresFrom(dir.trimEnd('/'), sinceMs)
+        events.departuresFrom(PathUtils.escapeLike(dir.trimEnd('/')), sinceMs)
             .filter { it.prevPath != null && !File(it.prevPath).exists() }
             .distinctBy { it.prevPath }
             .map { e ->
@@ -283,7 +283,7 @@ class FsRepository(private val db: GeymaDb) {
         val q = query.trim()
         if (q.isBlank()) return@withContext emptyList()
         val byFile = LinkedHashMap<String, SearchHit>()
-        for (e in events.search(q)) {
+        for (e in events.search(PathUtils.escapeLike(q))) {
             val gone = e.action == EventActions.TRASHED || e.action == EventActions.DELETED
             // For trashed/deleted files the live path is an internal trash path
             // with a UUID prefix — the file the user is looking for is the origin.
@@ -477,9 +477,10 @@ class FsRepository(private val db: GeymaDb) {
                     ),
                 )
                 log(EventActions.TRASHED, dst.absolutePath, prevPath = path, detail = "to trash", isDir = isDir)
-                stars.removeTree(path)
-                seen.removeTree(path)
-                revisits.removeTree(path)
+                val pathLike = PathUtils.escapeLike(path)
+                stars.removeTree(path, pathLike)
+                seen.removeTree(path, pathLike)
+                revisits.removeTree(path, pathLike)
                 trashed++
             }
             trashed
@@ -542,11 +543,12 @@ class FsRepository(private val db: GeymaDb) {
     }
 
     private suspend fun rebaseAll(oldBase: String, newBase: String) {
-        events.rebasePaths(oldBase, newBase)
-        stars.rebasePaths(oldBase, newBase)
-        sets.rebasePaths(oldBase, newBase)
-        seen.rebasePaths(oldBase, newBase)
-        revisits.rebasePaths(oldBase, newBase)
+        val oldBaseLike = PathUtils.escapeLike(oldBase)
+        events.rebasePaths(oldBase, oldBaseLike, newBase)
+        stars.rebasePaths(oldBase, oldBaseLike, newBase)
+        sets.rebasePaths(oldBase, oldBaseLike, newBase)
+        seen.rebasePaths(oldBase, oldBaseLike, newBase)
+        revisits.rebasePaths(oldBase, oldBaseLike, newBase)
     }
 
     private suspend fun log(
