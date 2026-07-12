@@ -21,6 +21,7 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 
 data class Entry(
     val name: String,
@@ -413,6 +414,45 @@ class FsRepository(private val db: GeymaDb) {
             target.absolutePath
         }
     }
+
+    /**
+     * Unpack a zip-format archive into a fresh, uniquely-named folder under
+     * [destParent] (named after the archive) and log it as a creation so the
+     * extracted tree shows up in the journal. Entries are validated against a
+     * zip-slip escape before anything is written.
+     */
+    suspend fun extractArchive(archivePath: String, destParent: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val archive = File(archivePath)
+                val folderName = uniqueNameIn(destParent, archive.nameWithoutExtension.ifBlank { "archive" })
+                val destDir = File(destParent, folderName)
+                if (!destDir.mkdirs()) throw IOException("Could not create ${destDir.name}")
+                val destRoot = destDir.canonicalPath
+                ZipFile(archive).use { zip ->
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        val outFile = File(destDir, entry.name)
+                        // Zip-slip guard: a crafted "../" entry must not escape destDir.
+                        val outPath = outFile.canonicalPath
+                        if (outPath != destRoot && !outPath.startsWith(destRoot + File.separator)) {
+                            throw IOException("Unsafe archive entry: ${entry.name}")
+                        }
+                        if (entry.isDirectory) {
+                            outFile.mkdirs()
+                        } else {
+                            outFile.parentFile?.mkdirs()
+                            zip.getInputStream(entry).use { input ->
+                                outFile.outputStream().use { output -> input.copyTo(output) }
+                            }
+                        }
+                    }
+                }
+                log(EventActions.CREATED, destDir.absolutePath, detail = "extracted from ${archive.name}", isDir = true)
+                destDir.absolutePath
+            }
+        }
 
     suspend fun rename(path: String, newName: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {

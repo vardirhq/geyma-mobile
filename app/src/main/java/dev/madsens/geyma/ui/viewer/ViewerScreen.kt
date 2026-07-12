@@ -53,6 +53,7 @@ fun ViewerScreen(
     app: GeymaApp,
     initialPath: String,
     onBack: () -> Unit,
+    recordOpen: Boolean = true,
 ) {
     val t = LocalTheme.current
     val context = LocalContext.current
@@ -61,7 +62,8 @@ fun ViewerScreen(
     val kind = remember(path) { InAppViewer.kindFor(name, File(path).length()) }
 
     // Viewing a file counts as opening it — record it just like an external open.
-    LaunchedEffect(path) { app.repo.recordOpen(path) }
+    // Previews of extracted archive temp files opt out so the journal stays clean.
+    LaunchedEffect(path, recordOpen) { if (recordOpen) app.repo.recordOpen(path) }
 
     Column(Modifier.fillMaxSize().background(t.bg)) {
         ViewerBar(
