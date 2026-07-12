@@ -50,7 +50,6 @@ import dev.madsens.geyma.theme.DANGER
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.onAccent
 import dev.madsens.geyma.ui.browser.NameDialog
-import dev.madsens.geyma.ui.browser.openFile
 import dev.madsens.geyma.ui.browser.shareFiles
 import dev.madsens.geyma.ui.components.EmptyState
 import dev.madsens.geyma.ui.components.GeymaCard
@@ -61,7 +60,7 @@ import java.io.File
 import java.util.UUID
 
 @Composable
-fun SetsScreen(app: GeymaApp, onBrowseTo: (String) -> Unit) {
+fun SetsScreen(app: GeymaApp, onView: (String) -> Unit, onBrowseTo: (String) -> Unit) {
     val t = LocalTheme.current
     val sets by app.db.sets().all().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
@@ -71,7 +70,7 @@ fun SetsScreen(app: GeymaApp, onBrowseTo: (String) -> Unit) {
     val current = openSet
     if (current != null) {
         BackHandler { openSet = null }
-        SetDetail(app, current, onClose = { openSet = null }, onBrowseTo = onBrowseTo)
+        SetDetail(app, current, onClose = { openSet = null }, onView = onView, onBrowseTo = onBrowseTo)
         return
     }
 
@@ -140,7 +139,7 @@ fun SetsScreen(app: GeymaApp, onBrowseTo: (String) -> Unit) {
 }
 
 @Composable
-private fun SetDetail(app: GeymaApp, set: WorkingSet, onClose: () -> Unit, onBrowseTo: (String) -> Unit) {
+private fun SetDetail(app: GeymaApp, set: WorkingSet, onClose: () -> Unit, onView: (String) -> Unit, onBrowseTo: (String) -> Unit) {
     val t = LocalTheme.current
     val context = LocalContext.current
     val items by app.db.sets().items(set.id).collectAsState(initial = emptyList())
@@ -197,7 +196,7 @@ private fun SetDetail(app: GeymaApp, set: WorkingSet, onClose: () -> Unit, onBro
                         .fillMaxWidth()
                         .clip(geymaShape())
                         .clickable(enabled = !missing) {
-                            if (entry.isDir) onBrowseTo(entry.path) else openFile(context, entry.path)
+                            if (entry.isDir) onBrowseTo(entry.path) else onView(entry.path)
                         }
                         .padding(horizontal = 6.dp, vertical = 6.dp),
                 ) {

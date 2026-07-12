@@ -77,8 +77,16 @@ Package root: `dev.madsens.geyma` (app id `dev.madsens.geyma`, matching desktop)
   bottom-nav shell (Home, Files, Timeline, Sets) and hosts everything else —
   Trash, Settings, and the mobile-original surfaces (`sweep/` for arrivals never
   opened, `almanac/` history digest, `dossier/` per-file detail, `echoes/`
-  revisit reminders, `finder/` journal search, `share/` inbound share-target) —
-  as full-screen destinations reached from within screens, not as tabs.
+  revisit reminders, `finder/` journal search, `share/` inbound share-target,
+  `viewer/` in-app file preview) — as full-screen destinations reached from
+  within screens, not as tabs.
+- **`viewer/`** — tapping a file opens it *inside* Geyma when a built-in viewer
+  fits (images with a swipe-through gallery, video/audio via platform players,
+  PDFs via the framework `PdfRenderer`, text/code), otherwise it falls back to
+  the system chooser. `files/Viewable.kt` (`InAppViewer.kindFor`) is the pure,
+  unit-tested routing decision; `GeymaRoot.openEntry` is the single call site
+  that picks viewer-vs-external. Viewing records an `opened` event just like an
+  external open, so it still feeds the journal, sweep ledger and dossiers.
 
 ### Conventions
 
