@@ -1,6 +1,12 @@
 package dev.madsens.geyma
 
 import android.app.Application
+import android.os.Build
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
+import coil.decode.SvgDecoder
 import dev.madsens.geyma.continuity.Continuity
 import dev.madsens.geyma.data.GeymaDb
 import dev.madsens.geyma.data.Prefs
@@ -11,7 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class GeymaApp : Application() {
+class GeymaApp : Application(), ImageLoaderFactory {
     val db: GeymaDb by lazy { GeymaDb.get(this) }
     val repo: FsRepository by lazy { FsRepository(db) }
     val prefs: Prefs by lazy { Prefs(this) }
@@ -28,4 +34,22 @@ class GeymaApp : Application() {
         // deliberately long so Geyma still "remembers."
         appScope.launch(Dispatchers.IO) { repo.pruneJournal() }
     }
+
+    /**
+     * Coil's singleton loader, taught to decode animated GIFs and vector SVGs so
+     * they render (and animate) both in thumbnails and the in-app image viewer.
+     * ImageDecoderDecoder gives hardware-accelerated animation on API 28+; the
+     * older GifDecoder covers 26–27.
+     */
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            .components {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+                add(SvgDecoder.Factory())
+            }
+            .build()
 }

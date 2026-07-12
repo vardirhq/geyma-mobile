@@ -13,6 +13,8 @@ class ViewableTest {
     fun mediaAndImagesRouteToTheirViewers() {
         assertEquals(ViewerKind.IMAGE, InAppViewer.kindFor("photo.JPG"))
         assertEquals(ViewerKind.IMAGE, InAppViewer.kindFor("frame.heic"))
+        assertEquals(ViewerKind.IMAGE, InAppViewer.kindFor("loop.gif"))
+        assertEquals(ViewerKind.IMAGE, InAppViewer.kindFor("icon.svg"))
         assertEquals(ViewerKind.VIDEO, InAppViewer.kindFor("clip.mkv"))
         assertEquals(ViewerKind.AUDIO, InAppViewer.kindFor("song.flac"))
     }
@@ -23,10 +25,9 @@ class ViewableTest {
     }
 
     @Test
-    fun textCodeAndSvgAndBareNamesReadAsText() {
+    fun textCodeAndBareNamesReadAsText() {
         assertEquals(ViewerKind.TEXT, InAppViewer.kindFor("notes.md"))
         assertEquals(ViewerKind.TEXT, InAppViewer.kindFor("Main.kt"))
-        assertEquals(ViewerKind.TEXT, InAppViewer.kindFor("icon.svg"))
         assertEquals(ViewerKind.TEXT, InAppViewer.kindFor("README"))
     }
 

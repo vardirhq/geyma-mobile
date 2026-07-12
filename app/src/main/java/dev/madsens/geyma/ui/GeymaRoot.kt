@@ -50,12 +50,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.madsens.geyma.GeymaApp
+import dev.madsens.geyma.files.ArchiveSupport
 import dev.madsens.geyma.files.InAppViewer
 import dev.madsens.geyma.files.StorageRoots
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.geymaBackdrop
 import dev.madsens.geyma.theme.onAccent
 import dev.madsens.geyma.ui.almanac.AlmanacScreen
+import dev.madsens.geyma.ui.archive.ArchiveScreen
 import dev.madsens.geyma.ui.browser.AddToSetDialog
 import dev.madsens.geyma.ui.browser.BrowserScreen
 import dev.madsens.geyma.ui.browser.BrowserViewModel
@@ -127,10 +129,12 @@ fun GeymaRoot(
         var echoesOpen by remember { mutableStateOf(false) }
         var dossierPath by remember { mutableStateOf<String?>(null) }
         var viewerPath by remember { mutableStateOf<String?>(null) }
+        var archivePath by remember { mutableStateOf<String?>(null) }
         val scope = rememberCoroutineScope()
 
         val overlayOpen = trashOpen || settingsOpen || finderOpen || sweepOpen ||
-            almanacOpen || echoesOpen || dossierPath != null || viewerPath != null
+            almanacOpen || echoesOpen || dossierPath != null || viewerPath != null ||
+            archivePath != null
         fun closeOverlays() {
             trashOpen = false
             settingsOpen = false
@@ -140,16 +144,24 @@ fun GeymaRoot(
             echoesOpen = false
             dossierPath = null
             viewerPath = null
+            archivePath = null
         }
 
-        // Tapping a file: open it inside Geyma when we have a viewer for it,
-        // otherwise fall back to the system chooser. Either way it's an "open".
+        // Tapping a file: browse into it if it's a zip we can read, otherwise open
+        // it inside Geyma when we have a viewer, otherwise hand off to the system
+        // chooser. Every path counts as an "open".
         fun openEntry(path: String) {
-            if (InAppViewer.canView(File(path).name, File(path).length())) {
-                closeOverlays()
-                viewerPath = path
-            } else {
-                openFile(context, path) { scope.launch { app.repo.recordOpen(it) } }
+            val file = File(path)
+            when {
+                ArchiveSupport.canBrowse(file.name) -> {
+                    closeOverlays()
+                    archivePath = path
+                }
+                InAppViewer.canView(file.name, file.length()) -> {
+                    closeOverlays()
+                    viewerPath = path
+                }
+                else -> openFile(context, path) { scope.launch { app.repo.recordOpen(it) } }
             }
         }
 
@@ -196,6 +208,19 @@ fun GeymaRoot(
                             app = app,
                             initialPath = viewerPath!!,
                             onBack = { viewerPath = null },
+                        )
+                    }
+                    archivePath != null -> {
+                        // ArchiveScreen owns its own back handling (internal folders + preview).
+                        ArchiveScreen(
+                            app = app,
+                            archivePath = archivePath!!,
+                            onBack = { archivePath = null },
+                            onExtracted = { folder ->
+                                archivePath = null
+                                vm.open(folder)
+                                tab = Tab.FILES
+                            },
                         )
                     }
                     finderOpen -> {

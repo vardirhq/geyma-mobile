@@ -21,11 +21,9 @@ object InAppViewer {
      */
     fun kindFor(name: String, sizeBytes: Long = 0L): ViewerKind {
         val ext = name.substringAfterLast('.', "").lowercase()
-        // SVG is XML under the hood; without an SVG decoder we show it as text.
         if (ext == "pdf") return ViewerKind.PDF
-        if (ext == "svg") return textIfSmall(sizeBytes)
         return when (FileKind.ofName(name, isDir = false)) {
-            FileKind.IMAGE -> ViewerKind.IMAGE
+            FileKind.IMAGE -> ViewerKind.IMAGE // includes SVG, rendered via Coil's SVG decoder
             FileKind.VIDEO -> ViewerKind.VIDEO
             FileKind.AUDIO -> ViewerKind.AUDIO
             FileKind.TEXT, FileKind.CODE -> textIfSmall(sizeBytes)

@@ -78,15 +78,25 @@ Package root: `dev.madsens.geyma` (app id `dev.madsens.geyma`, matching desktop)
   Trash, Settings, and the mobile-original surfaces (`sweep/` for arrivals never
   opened, `almanac/` history digest, `dossier/` per-file detail, `echoes/`
   revisit reminders, `finder/` journal search, `share/` inbound share-target,
-  `viewer/` in-app file preview) — as full-screen destinations reached from
-  within screens, not as tabs.
+  `viewer/` in-app file preview, `archive/` zip browsing) — as full-screen
+  destinations reached from within screens, not as tabs.
 - **`viewer/`** — tapping a file opens it *inside* Geyma when a built-in viewer
-  fits (images with a swipe-through gallery, video/audio via platform players,
-  PDFs via the framework `PdfRenderer`, text/code), otherwise it falls back to
-  the system chooser. `files/Viewable.kt` (`InAppViewer.kindFor`) is the pure,
-  unit-tested routing decision; `GeymaRoot.openEntry` is the single call site
-  that picks viewer-vs-external. Viewing records an `opened` event just like an
-  external open, so it still feeds the journal, sweep ledger and dossiers.
+  fits (images with a swipe-through gallery — GIFs animate and SVGs render via
+  Coil decoders registered in `GeymaApp.newImageLoader`; video/audio via platform
+  players; PDFs via the framework `PdfRenderer`; text/code), otherwise it falls
+  back to the system chooser. `files/Viewable.kt` (`InAppViewer.kindFor`) is the
+  pure, unit-tested routing decision; `GeymaRoot.openEntry` is the single call
+  site that picks archive-vs-viewer-vs-external. Viewing records an `opened`
+  event just like an external open, so it still feeds the journal, sweep ledger
+  and dossiers.
+- **`archive/`** — zip-format containers (zip/jar/gyset) are browsed like folders
+  from `GeymaRoot.openEntry`. `files/Archive.kt` (`ArchiveTree.childrenOf`,
+  `ArchiveSupport.canBrowse`) is the pure, unit-tested tree traversal that
+  synthesizes implicit directories; `files/ZipIo.kt` does read-only listing and
+  cache-scratch single-entry preview (routed back through `ViewerScreen` with
+  `recordOpen = false`). "Extract all" is the one mutation — it goes through
+  `FsRepository.extractArchive` (with a zip-slip guard) so the extracted tree is
+  journaled. Non-zip archives (tar/gz/7z/rar) still hand off externally.
 
 ### Conventions
 
@@ -124,8 +134,9 @@ workflow does not exist yet.
 
 ## Not yet ported from desktop
 
-Archive preview/extraction, batch rename, rule-based (smart) working sets,
-SFTP/SMB remotes, and the local AI (Ollama) features. (Some mobile-original
+Batch rename, rule-based (smart) working sets, SFTP/SMB remotes, and the local
+AI (Ollama) features. (Zip-format archive browsing + extraction is done — see
+`archive/`; non-zip formats like tar/gz/7z/rar are still external.) (Some mobile-original
 features have no desktop equivalent — sweep, almanac, echoes/revisits, the
 share-target inbox — so "port from desktop" and "matches desktop" don't apply
 to those; keep them internally consistent instead.)
