@@ -1,7 +1,10 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package dev.madsens.geyma.ui.echoes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,7 +70,12 @@ import kotlinx.coroutines.launch
  * echoes can be swept to trash — and because trash remembers origins, undone.
  */
 @Composable
-fun EchoesScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
+fun EchoesScreen(
+    app: GeymaApp,
+    onBack: () -> Unit,
+    onOpenTrash: () -> Unit,
+    onOpenDossier: (String) -> Unit,
+) {
     val t = LocalTheme.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -132,6 +140,11 @@ fun EchoesScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                         color = t.inkFaint,
                         fontSize = 12.sp,
                     )
+                    Text(
+                        "Hold any copy to see its full details.",
+                        color = t.inkFaint,
+                        fontSize = 12.sp,
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.weight(1f)) {
@@ -143,6 +156,7 @@ fun EchoesScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                                 onToggle = { path ->
                                     selection = if (path in selection) selection - path else selection + path
                                 },
+                                onOpenDossier = onOpenDossier,
                             )
                         }
                         item { Spacer(Modifier.height(80.dp)) }
@@ -188,6 +202,7 @@ private fun DuplicateGroupCard(
     group: DuplicateGroup,
     selection: Set<String>,
     onToggle: (String) -> Unit,
+    onOpenDossier: (String) -> Unit,
 ) {
     val t = LocalTheme.current
     val colors = itemColors(group.kind, t)
@@ -217,22 +232,37 @@ private fun DuplicateGroupCard(
             }
         }
         Spacer(Modifier.height(6.dp))
-        CopyRow(group.original, kept = true, selected = false, onToggle = {})
+        CopyRow(group.original, kept = true, selected = false, onToggle = {}, onOpenDossier = onOpenDossier)
         for (echo in group.echoes) {
-            CopyRow(echo, kept = false, selected = echo.path in selection, onToggle = { onToggle(echo.path) })
+            CopyRow(
+                echo,
+                kept = false,
+                selected = echo.path in selection,
+                onToggle = { onToggle(echo.path) },
+                onOpenDossier = onOpenDossier,
+            )
         }
     }
 }
 
 @Composable
-private fun CopyRow(file: FileFingerprint, kept: Boolean, selected: Boolean, onToggle: () -> Unit) {
+private fun CopyRow(
+    file: FileFingerprint,
+    kept: Boolean,
+    selected: Boolean,
+    onToggle: () -> Unit,
+    onOpenDossier: (String) -> Unit,
+) {
     val t = LocalTheme.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .clip(geymaShape(0.5f))
-            .clickable(enabled = !kept, onClick = onToggle)
+            .combinedClickable(
+                onClick = { if (!kept) onToggle() },
+                onLongClick = { onOpenDossier(file.path) },
+            )
             .padding(horizontal = 4.dp, vertical = 6.dp),
     ) {
         Column(Modifier.weight(1f)) {

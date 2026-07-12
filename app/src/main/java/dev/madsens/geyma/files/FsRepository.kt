@@ -54,6 +54,18 @@ data class SearchHit(
     val prevPath: String?,
 )
 
+/** Concrete on-disk facts about one file, for a dossier's detail card. */
+data class FileFacts(
+    val path: String,
+    val exists: Boolean,
+    val isDir: Boolean,
+    val size: Long,
+    val modifiedMs: Long,
+    val kind: String,
+    val mime: String,
+    val childCount: Int?,
+)
+
 /** Which stage an Echoes scan is in, for progress feedback. */
 enum class ScanPhase { WALKING, COMPARING }
 
@@ -137,6 +149,22 @@ class FsRepository(private val db: GeymaDb) {
             neglected = seen.neverOpenedCount(),
             nowMs = System.currentTimeMillis(),
             days = days,
+        )
+    }
+
+    /** On-disk facts (size, type, dates) about one file, read off the main thread. */
+    suspend fun fileFacts(path: String): FileFacts = withContext(Dispatchers.IO) {
+        val f = File(path)
+        val isDir = f.isDirectory
+        FileFacts(
+            path = path,
+            exists = f.exists(),
+            isDir = isDir,
+            size = if (isDir) 0 else f.length(),
+            modifiedMs = f.lastModified(),
+            kind = FileKind.ofName(f.name, isDir),
+            mime = FileKind.mimeOf(f.name),
+            childCount = if (isDir) f.list()?.size else null,
         )
     }
 
