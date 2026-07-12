@@ -200,7 +200,7 @@ fun GeymaRoot(
                             path = dossierPath!!,
                             onBack = { dossierPath = null },
                             onBrowse = { path ->
-                                dossierPath = null
+                                closeOverlays()
                                 vm.open(path)
                                 tab = Tab.FILES
                             },
@@ -228,6 +228,7 @@ fun GeymaRoot(
                                 echoesOpen = false
                                 trashOpen = true
                             },
+                            onOpenDossier = { path -> dossierPath = path },
                         )
                     }
                     trashOpen -> {

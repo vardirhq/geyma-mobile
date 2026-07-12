@@ -44,6 +44,7 @@ import dev.madsens.geyma.data.FileEvent
 import dev.madsens.geyma.data.Revisit
 import dev.madsens.geyma.insights.DossierSummary
 import dev.madsens.geyma.insights.RevisitWhen
+import dev.madsens.geyma.files.FileFacts
 import dev.madsens.geyma.files.FileKind
 import dev.madsens.geyma.files.PathUtils
 import dev.madsens.geyma.theme.LocalTheme
@@ -70,12 +71,14 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
     val t = LocalTheme.current
     val scope = rememberCoroutineScope()
     var summary by remember(path) { mutableStateOf<DossierSummary?>(null) }
+    var facts by remember(path) { mutableStateOf<FileFacts?>(null) }
     var events by remember(path) { mutableStateOf<List<FileEvent>>(emptyList()) }
     var revisit by remember(path) { mutableStateOf<Revisit?>(null) }
     var reloads by remember(path) { mutableStateOf(0) }
 
     LaunchedEffect(path, reloads) {
         summary = app.repo.dossier(path)
+        facts = app.repo.fileFacts(path)
         events = app.repo.historyFor(path)
         revisit = app.repo.revisitFor(path)
     }
@@ -131,6 +134,11 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
         }
 
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            facts?.let { f ->
+                item { SectionHeader("File details") }
+                item { FileDetailsCard(f) }
+            }
+            item { SectionHeader("What Geyma remembers") }
             item { ProvenanceCard(s) }
 
             item {
@@ -197,6 +205,27 @@ private fun ProvenanceCard(s: DossierSummary) {
         if (s.trashed) {
             Spacer(Modifier.height(4.dp))
             Text("This file is currently in the trash.", color = t.inkSoft, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun FileDetailsCard(f: FileFacts) {
+    val t = LocalTheme.current
+    GeymaCard(modifier = Modifier.fillMaxWidth()) {
+        StatLine("Location", f.path)
+        if (f.isDir) {
+            StatLine("Type", "Folder")
+            f.childCount?.let { StatLine("Contains", "$it item${if (it == 1) "" else "s"}") }
+        } else {
+            StatLine("Size", "${PathUtils.humanSize(f.size)} (${"%,d".format(f.size)} bytes)")
+            val typeLabel = FileKind.LABELS[f.kind] ?: f.kind.replaceFirstChar { it.uppercase() }
+            StatLine("Type", "$typeLabel · ${f.mime}")
+        }
+        StatLine("Modified", formatWhen(f.modifiedMs))
+        if (!f.exists) {
+            Spacer(Modifier.height(4.dp))
+            Text("Not on disk right now — it may have been moved or removed.", color = t.inkSoft, fontSize = 12.sp)
         }
     }
 }
