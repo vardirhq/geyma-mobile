@@ -2,6 +2,7 @@ package dev.madsens.geyma
 
 import android.graphics.Color as AndroidColor
 import android.content.Intent
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,9 +15,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 import dev.madsens.geyma.theme.GeymaTheme
-import dev.madsens.geyma.theme.resolveTheme
 import dev.madsens.geyma.ui.GeymaRoot
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
 
@@ -29,8 +32,14 @@ class MainActivity : ComponentActivity() {
         val app = application as GeymaApp
         sharedUris = extractSharedUris(intent)
 
+        // Paint the window in the saved skin's background before Compose lays out,
+        // so a light skin doesn't flash the black manifest window background on
+        // launch. The DataStore read is a fast first-value fetch.
+        val startTheme = runBlocking { app.prefs.theme.first() }
+        window.setBackgroundDrawable(ColorDrawable(startTheme.bg.toArgb()))
+
         setContent {
-            val theme by app.prefs.theme.collectAsState(initial = resolveTheme("obsidian"))
+            val theme by app.prefs.theme.collectAsState(initial = startTheme)
 
             // Status/nav bar icon contrast must follow the skin, not the OS
             // dark-mode setting — a light skin on a dark-mode phone would

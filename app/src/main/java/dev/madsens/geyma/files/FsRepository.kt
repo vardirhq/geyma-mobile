@@ -267,6 +267,17 @@ class FsRepository(private val db: GeymaDb) {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    /**
+     * Trim journal entries older than [RETENTION_MONTHS]. Geyma is "an app that
+     * remembers," so the window is deliberately generous — two years, far beyond
+     * anything the timeline or almanac surface — but the table can't grow without
+     * bound forever. Called once per launch.
+     */
+    suspend fun pruneJournal() = withContext(Dispatchers.IO) {
+        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(RETENTION_MONTHS * 30L)
+        events.prune(cutoff)
+    }
+
     suspend fun revisitFor(path: String): Revisit? = revisits.byPath(path)
 
     suspend fun scheduleRevisit(path: String, dueMs: Long, note: String? = null) =
@@ -467,8 +478,8 @@ class FsRepository(private val db: GeymaDb) {
                 if (!src.exists()) continue
                 val id = UUID.randomUUID().toString()
                 val dst = File(trashDir, "${id}__${src.name}")
-                val size = if (src.isDirectory) 0 else src.length()
                 val isDir = src.isDirectory
+                val size = if (isDir) dirSize(src) else src.length()
                 moveFile(src, dst)
                 trash.add(
                     TrashEntry(
@@ -530,6 +541,20 @@ class FsRepository(private val db: GeymaDb) {
         PathUtils.uniqueChildName(existing, desired)
     }
 
+    /** Total bytes under a directory, so trashed folders record a real size. */
+    private fun dirSize(dir: File): Long {
+        var total = 0L
+        val stack = ArrayDeque<File>()
+        stack.addLast(dir)
+        while (stack.isNotEmpty()) {
+            val kids = stack.removeLast().listFiles() ?: continue
+            for (f in kids) {
+                if (f.isDirectory) stack.addLast(f) else total += f.length()
+            }
+        }
+        return total
+    }
+
     /** renameTo when possible, copy+delete across volumes. */
     private fun moveFile(src: File, dst: File) {
         if (src.renameTo(dst)) return
@@ -559,5 +584,10 @@ class FsRepository(private val db: GeymaDb) {
         isDir: Boolean = false,
     ) {
         events.insert(FileEvent(path = path, action = action, detail = detail, prevPath = prevPath, isDir = isDir))
+    }
+
+    private companion object {
+        /** How long journal entries are kept before [pruneJournal] trims them. */
+        const val RETENTION_MONTHS = 24L
     }
 }

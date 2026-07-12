@@ -53,32 +53,52 @@ of the ledgers the app exists to protect.
 operand is escaped (via a separate bound parameter where the same path feeds
 both).
 
-### 4. Arrival reconcile has a race and no debounce _(not fixed — noted)_
-`files/StorageWatcher.kt`, `files/FsRepository.kt`
+### 4. Arrival reconcile has a race and no debounce **[FIXED]**
+`files/StorageWatcher.kt`
 
-Every `FileObserver` event launches an unsynchronized `reconcileArrivals` over
-all watched folders. Concurrent runs both snapshot `seen.allPaths()` and can each
-log the same `ARRIVED` event (journal insert isn't dedup'd, unlike the `SeenFile`
-insert). A burst of downloads also triggers a scan storm. Recommended fix:
-debounce and guard reconcile with a `Mutex`.
+Every `FileObserver` event launched an unsynchronized `reconcileArrivals` over
+all watched folders. Concurrent runs both snapshot `seen.allPaths()` and could
+each log the same `ARRIVED` event (journal insert isn't dedup'd, unlike the
+`SeenFile` insert). A burst of downloads also triggered a scan storm.
 
-## Low / polish _(not fixed — noted)_
+**Fix:** reconcile now runs under a `Mutex` so only one scan proceeds at a time,
+and live `FileObserver` events are coalesced through a 750 ms debounce (which
+also lets a file finish writing) instead of firing a scan per event.
 
-- **Journal never pruned.** `EventDao.prune()` / `count()` are dead code; the
-  `events` table grows unbounded. Call `prune(now - Nmonths)` on launch or drop
-  the methods.
-- **Black splash on light skins.** `res/values/themes.xml` hardcodes
-  `windowBackground` to black.
+## Low / polish
+
+- **Journal never pruned. [FIXED]** The `events` table grew unbounded.
+  `FsRepository.pruneJournal()` now runs once per launch (from
+  `GeymaApp.onCreate`) and trims entries older than 24 months — a deliberately
+  generous window, well beyond what the timeline or almanac surface, so Geyma
+  still "remembers." The unused `EventDao.count()` was removed.
+- **Black splash on light skins. [FIXED]** `MainActivity.onCreate` now paints
+  the window in the saved skin's background color (via a `ColorDrawable`) before
+  Compose lays out, so a light skin no longer flashes the manifest's black
+  window background on launch.
+- **Continuity import unbounded read. [FIXED]** `Continuity.import` now streams
+  the bundle through a 64 MB cap and fails fast if exceeded, instead of reading
+  an arbitrarily large (possibly hostile) file fully into memory.
+- **Trash size wrong for folders. [FIXED]** `moveToTrash` recorded 0 B for
+  directories; it now sums the tree so the trash screen shows a real size.
+- **CI. [FIXED]** `dev-release.yml` no longer runs a raw
+  `git push --delete origin dev` (which would also delete a branch named `dev`);
+  it uses `gh release delete dev --cleanup-tag` to remove the release and its
+  tag together.
 - **Find treats `%`/`_` as wildcards** — same root cause as #3, user-facing
   search. (`escapeLike` is now applied here too as part of the #3 fix.)
-- **Continuity import** reads the whole bundle into memory with no size/record
-  limit (`Continuity.kt`).
-- **Trash size wrong for folders** — recorded as 0 B (`FsRepository.moveToTrash`).
-- **FileProvider `/storage` root-path** is broader than needed (`file_paths.xml`).
-- **`FileKind.ofExtension` defaults unknown extensions to `TEXT`** → `text/plain`.
+- **FileProvider `/storage` root-path** _(left as-is — intentional)_. Geyma holds
+  all-files access and shares/opens files on any mounted volume (SD cards and
+  USB live under `/storage/<volume-id>` with runtime-assigned ids), so the
+  `/storage` root-path is what multi-volume sharing needs; narrowing it would
+  break sharing off secondary volumes (`file_paths.xml`).
+- **`FileKind.ofExtension` defaults unknown extensions to `TEXT`** _(left as-is)_.
+  The desktop's kind palette has no "unknown" bucket, so an unclassified file
+  falls back to `TEXT` to stay within it; `mimeOf` still returns `*/*` (not
+  `text/plain`) for unknown extensions, so opening is unaffected.
 - **Distribution:** `MANAGE_EXTERNAL_STORAGE` blocks Google Play unless the app
-  qualifies under the file-manager exception (fine for sideload).
-- **CI:** `dev-release.yml` runs `git push --delete origin dev` on every publish.
+  qualifies under the file-manager exception (fine for sideload) — unchanged, a
+  deliberate product tradeoff.
 
 ## Solid
 
