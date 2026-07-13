@@ -111,6 +111,17 @@ Package root: `dev.madsens.geyma` (app id `dev.madsens.geyma`, matching desktop)
   theme resolution).
 - Match the desktop's event action strings (`EventActions`) and skin token names.
 
+## Versioning
+
+**Bump the version on every user-facing change.** `app/build.gradle.kts`
+holds `versionCode` (increment by 1) and `versionName` (semantic label). The
+Settings › About card reads these straight from `BuildConfig`
+(`buildFeatures { buildConfig = true }`), so bumping them is what lets
+on-device testing confirm a fresh build actually landed rather than chasing a
+"fix" that never shipped. When a change seems not to take effect on device,
+check the version in Settings against the build you expect before re-touching
+the code.
+
 ## Dev APK releases
 
 `.github/workflows/dev-release.yml` builds the debug APK and publishes it to a
