@@ -51,6 +51,17 @@ object FileKind {
         return if (ext.isEmpty()) TEXT else ofExtension(ext)
     }
 
+    /**
+     * True when [ext] appears in one of the kind tables — i.e. it's a format we
+     * actually recognize, not something [ofExtension] merely defaulted to TEXT.
+     * Lets callers tell a genuine text/code file apart from an unknown blob.
+     */
+    fun isKnownExtension(ext: String): Boolean {
+        val e = ext.lowercase()
+        return e in documentExt || e in textExt || e in codeExt || e in imageExt ||
+            e in videoExt || e in audioExt || e in archiveExt || e in appExt
+    }
+
     fun mimeOf(name: String): String {
         val ext = name.substringAfterLast('.', "").lowercase()
         return when {

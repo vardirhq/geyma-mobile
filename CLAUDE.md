@@ -83,12 +83,16 @@ Package root: `dev.madsens.geyma` (app id `dev.madsens.geyma`, matching desktop)
 - **`viewer/`** — tapping a file opens it *inside* Geyma when a built-in viewer
   fits (images with a swipe-through gallery — GIFs animate and SVGs render via
   Coil decoders registered in `GeymaApp.newImageLoader`; video/audio via platform
-  players; PDFs via the framework `PdfRenderer`; text/code), otherwise it falls
+  players; PDFs via the framework `PdfRenderer`; HTML and Markdown render as a
+  formatted page in a locked-down `WebView` — JS/file/network access all off —
+  with Markdown converted by the pure `files/Markdown.kt`; text/code, with large
+  *known* text files shown truncated rather than bounced out), otherwise it falls
   back to the system chooser. `files/Viewable.kt` (`InAppViewer.kindFor`) is the
-  pure, unit-tested routing decision; `GeymaRoot.openEntry` is the single call
-  site that picks archive-vs-viewer-vs-external. Viewing records an `opened`
-  event just like an external open, so it still feeds the journal, sweep ledger
-  and dossiers.
+  pure, unit-tested routing decision — it keeps recognized text/code viewable at
+  any size while gating *unknown* extensions by size so a big binary isn't poured
+  into the text pane; `GeymaRoot.openEntry` is the single call site that picks
+  archive-vs-viewer-vs-external. Viewing records an `opened` event just like an
+  external open, so it still feeds the journal, sweep ledger and dossiers.
 - **`archive/`** — zip-format containers (zip/jar/gyset) are browsed like folders
   from `GeymaRoot.openEntry`. `files/Archive.kt` (`ArchiveTree.childrenOf`,
   `ArchiveSupport.canBrowse`) is the pure, unit-tested tree traversal that

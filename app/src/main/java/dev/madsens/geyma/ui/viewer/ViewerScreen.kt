@@ -78,6 +78,7 @@ fun ViewerScreen(
                 ViewerKind.VIDEO -> VideoViewer(path)
                 ViewerKind.AUDIO -> AudioViewer(path, name)
                 ViewerKind.PDF -> PdfViewer(path)
+                ViewerKind.WEB -> WebViewer(path)
                 ViewerKind.TEXT -> TextViewer(path)
                 ViewerKind.NONE -> ViewerMessage(
                     "Geyma can't preview this one.",
