@@ -121,24 +121,43 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
     var newFolderOpen by remember { mutableStateOf(false) }
     var addToSetTarget by remember { mutableStateOf<List<String>?>(null) }
 
-    // Scroll positions restored from the view model so returning from the viewer
-    // (which removes this screen from composition) lands where you left off.
-    val listState = remember { LazyListState(vm.listScroll.first, vm.listScroll.second) }
-    val gridState = remember { LazyGridState(vm.gridScroll.first, vm.gridScroll.second) }
+    // Scroll positions come from the view model's per-directory memory, so both a
+    // viewer round-trip (which removes this screen from composition) and an in-app
+    // folder hop land where you left off. Initialise from whatever the folder now
+    // on screen last banked.
+    val listState = remember {
+        val (i, o) = vm.listScrollFor(vm.state.value.dir)
+        LazyListState(i, o)
+    }
+    val gridState = remember {
+        val (i, o) = vm.gridScrollFor(vm.state.value.dir)
+        LazyGridState(i, o)
+    }
     DisposableEffect(Unit) {
         onDispose {
-            vm.listScroll = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-            vm.gridScroll = gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+            vm.scrolledDir?.let { dir ->
+                vm.rememberScroll(
+                    dir,
+                    listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset,
+                    gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset,
+                )
+            }
         }
     }
-    // A genuine folder change scrolls back to the top; a viewer round-trip (same
-    // dir) leaves the restored position alone.
+    // On a folder change, bank the scroll of the folder we're leaving and jump to
+    // where we last were in the folder we're entering (top on a first visit).
     LaunchedEffect(state.dir) {
-        if (vm.scrolledDir != null && vm.scrolledDir != state.dir) {
-            listState.scrollToItem(0)
-            gridState.scrollToItem(0)
-            vm.listScroll = 0 to 0
-            vm.gridScroll = 0 to 0
+        val prev = vm.scrolledDir
+        if (prev != null && prev != state.dir) {
+            vm.rememberScroll(
+                prev,
+                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset,
+                gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset,
+            )
+            val (li, lo) = vm.listScrollFor(state.dir)
+            val (gi, go) = vm.gridScrollFor(state.dir)
+            listState.scrollToItem(li, lo)
+            gridState.scrollToItem(gi, go)
         }
         vm.scrolledDir = state.dir
     }

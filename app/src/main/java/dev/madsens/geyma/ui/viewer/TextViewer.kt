@@ -1,8 +1,11 @@
 package dev.madsens.geyma.ui.viewer
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -37,13 +40,15 @@ import java.io.File
 fun TextViewer(path: String) {
     val t = LocalTheme.current
     var text by remember(path) { mutableStateOf<String?>(null) }
+    var truncated by remember(path) { mutableStateOf(false) }
     var failed by remember(path) { mutableStateOf(false) }
 
     LaunchedEffect(path) {
         val result = runCatching {
             withContext(Dispatchers.IO) {
                 val file = File(path)
-                val cap = minOf(file.length(), InAppViewer.MAX_TEXT_BYTES).toInt().coerceAtLeast(0)
+                val full = file.length()
+                val cap = minOf(full, InAppViewer.MAX_TEXT_BYTES).toInt().coerceAtLeast(0)
                 val buffer = ByteArray(cap)
                 file.inputStream().use { input ->
                     var read = 0
@@ -52,11 +57,12 @@ fun TextViewer(path: String) {
                         if (n < 0) break
                         read += n
                     }
-                    String(buffer, 0, read, Charsets.UTF_8)
+                    String(buffer, 0, read, Charsets.UTF_8) to (full > InAppViewer.MAX_TEXT_BYTES)
                 }
             }
         }
-        text = result.getOrNull()
+        text = result.getOrNull()?.first
+        truncated = result.getOrNull()?.second ?: false
         failed = result.isFailure
     }
 
@@ -70,18 +76,31 @@ fun TextViewer(path: String) {
             val name = PathUtils.nameOf(path)
             val mono = FileKind.ofName(name, isDir = false) == FileKind.CODE ||
                 name.endsWith(".svg", ignoreCase = true)
-            SelectionContainer {
-                Text(
-                    text = text!!,
-                    color = t.ink,
-                    fontSize = 13.sp,
-                    fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .horizontalScroll(rememberScrollState())
-                        .padding(14.dp),
-                )
+            Column(Modifier.fillMaxSize()) {
+                if (truncated) {
+                    Text(
+                        "Showing the first ${PathUtils.humanSize(InAppViewer.MAX_TEXT_BYTES)} — this file is larger.",
+                        color = t.inkFaint,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(t.surface)
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                }
+                SelectionContainer(Modifier.weight(1f)) {
+                    Text(
+                        text = text!!,
+                        color = t.ink,
+                        fontSize = 13.sp,
+                        fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .horizontalScroll(rememberScrollState())
+                            .padding(14.dp),
+                    )
+                }
             }
         }
     }

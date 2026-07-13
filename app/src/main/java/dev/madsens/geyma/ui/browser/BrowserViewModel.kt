@@ -60,14 +60,23 @@ class BrowserViewModel(private val repo: FsRepository, private val prefs: Prefs)
     private val _state = MutableStateFlow(BrowserState())
     val state: StateFlow<BrowserState> = _state.asStateFlow()
 
-    // Scroll memory (index to offset) for the list and grid, kept here so it
-    // survives BrowserScreen leaving composition — e.g. while a file is open in
-    // the viewer — and returning lands where you left off. `scrolledDir` records
-    // the folder the live scroll was last aligned to, so a genuine folder change
-    // resets to the top while a viewer round-trip (same dir) does not.
-    var listScroll: Pair<Int, Int> = 0 to 0
-    var gridScroll: Pair<Int, Int> = 0 to 0
+    // Per-directory scroll memory (index to offset) for the list and grid, kept
+    // here so it survives both an in-app folder hop *and* BrowserScreen leaving
+    // composition (e.g. while a file is open in the viewer). Each folder banks its
+    // own position, so stepping into a subfolder and back returns to exactly where
+    // you were instead of the top. `scrolledDir` records which folder the live
+    // scroll state is currently aligned to, so we know where to bank it on a change.
+    private val listScrolls = HashMap<String, Pair<Int, Int>>()
+    private val gridScrolls = HashMap<String, Pair<Int, Int>>()
     var scrolledDir: String? = null
+
+    fun listScrollFor(dir: String): Pair<Int, Int> = listScrolls[dir] ?: (0 to 0)
+    fun gridScrollFor(dir: String): Pair<Int, Int> = gridScrolls[dir] ?: (0 to 0)
+
+    fun rememberScroll(dir: String, list: Pair<Int, Int>, grid: Pair<Int, Int>) {
+        listScrolls[dir] = list
+        gridScrolls[dir] = grid
+    }
 
     init {
         viewModelScope.launch {
