@@ -17,8 +17,8 @@ android {
         // Settings > About lets on-device testing confirm the running build.
         // versionCode is the definitive build discriminator; versionName is the
         // human label.
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
     }
 
     buildTypes {

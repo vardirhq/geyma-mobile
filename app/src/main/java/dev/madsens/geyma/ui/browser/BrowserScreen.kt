@@ -121,45 +121,33 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
     var newFolderOpen by remember { mutableStateOf(false) }
     var addToSetTarget by remember { mutableStateOf<List<String>?>(null) }
 
-    // Scroll positions come from the view model's per-directory memory, so both a
-    // viewer round-trip (which removes this screen from composition) and an in-app
-    // folder hop land where you left off. Initialise from whatever the folder now
-    // on screen last banked.
-    val listState = remember {
-        val (i, o) = vm.listScrollFor(vm.state.value.dir)
+    // Each directory gets its own scroll state, keyed on the folder path and seeded
+    // from whatever the view model banked for it (top on a first visit). Building the
+    // state through its constructor is the reliable way to restore a position: it
+    // takes effect the moment the list is first laid out, so both an in-app folder
+    // hop *and* a viewer round-trip (which removes this screen from composition) land
+    // where you left off. An earlier version restored with `scrollToItem` while the
+    // folder was still loading — but the list is detached behind the spinner then, so
+    // the scroll was dropped and you snapped back to the top on the way out of a
+    // subfolder. The DisposableEffect banks the outgoing folder's position: it fires
+    // on a folder change (the key moves) and when BrowserScreen leaves for the viewer.
+    val listState = remember(state.dir) {
+        val (i, o) = vm.listScrollFor(state.dir)
         LazyListState(i, o)
     }
-    val gridState = remember {
-        val (i, o) = vm.gridScrollFor(vm.state.value.dir)
+    val gridState = remember(state.dir) {
+        val (i, o) = vm.gridScrollFor(state.dir)
         LazyGridState(i, o)
     }
-    DisposableEffect(Unit) {
+    DisposableEffect(state.dir) {
+        val dir = state.dir
         onDispose {
-            vm.scrolledDir?.let { dir ->
-                vm.rememberScroll(
-                    dir,
-                    listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset,
-                    gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset,
-                )
-            }
-        }
-    }
-    // On a folder change, bank the scroll of the folder we're leaving and jump to
-    // where we last were in the folder we're entering (top on a first visit).
-    LaunchedEffect(state.dir) {
-        val prev = vm.scrolledDir
-        if (prev != null && prev != state.dir) {
             vm.rememberScroll(
-                prev,
+                dir,
                 listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset,
                 gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset,
             )
-            val (li, lo) = vm.listScrollFor(state.dir)
-            val (gi, go) = vm.gridScrollFor(state.dir)
-            listState.scrollToItem(li, lo)
-            gridState.scrollToItem(gi, go)
         }
-        vm.scrolledDir = state.dir
     }
 
     BackHandler(enabled = state.selecting || state.dir != state.rootPath) {
