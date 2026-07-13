@@ -64,11 +64,10 @@ class BrowserViewModel(private val repo: FsRepository, private val prefs: Prefs)
     // here so it survives both an in-app folder hop *and* BrowserScreen leaving
     // composition (e.g. while a file is open in the viewer). Each folder banks its
     // own position, so stepping into a subfolder and back returns to exactly where
-    // you were instead of the top. `scrolledDir` records which folder the live
-    // scroll state is currently aligned to, so we know where to bank it on a change.
+    // you were instead of the top. BrowserScreen keys a fresh scroll state on the
+    // folder path and seeds it from here, banking the outgoing folder as it leaves.
     private val listScrolls = HashMap<String, Pair<Int, Int>>()
     private val gridScrolls = HashMap<String, Pair<Int, Int>>()
-    var scrolledDir: String? = null
 
     fun listScrollFor(dir: String): Pair<Int, Int> = listScrolls[dir] ?: (0 to 0)
     fun gridScrollFor(dir: String): Pair<Int, Int> = gridScrolls[dir] ?: (0 to 0)

@@ -5,7 +5,7 @@ name: Dev APK release
 # runner's throwaway debug key: fine for testing, but a new build may need an
 # uninstall of the previous one before it installs.
 #
-# Build marker: 0.2.0 (build 2) — verify this in Settings > About on device.
+# Build marker: 0.2.1 (build 3) — verify this in Settings > About on device.
 
 on:
   workflow_dispatch:
