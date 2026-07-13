@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -64,6 +66,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -118,6 +121,28 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
     var newFolderOpen by remember { mutableStateOf(false) }
     var addToSetTarget by remember { mutableStateOf<List<String>?>(null) }
 
+    // Scroll positions restored from the view model so returning from the viewer
+    // (which removes this screen from composition) lands where you left off.
+    val listState = remember { LazyListState(vm.listScroll.first, vm.listScroll.second) }
+    val gridState = remember { LazyGridState(vm.gridScroll.first, vm.gridScroll.second) }
+    DisposableEffect(Unit) {
+        onDispose {
+            vm.listScroll = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+            vm.gridScroll = gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+        }
+    }
+    // A genuine folder change scrolls back to the top; a viewer round-trip (same
+    // dir) leaves the restored position alone.
+    LaunchedEffect(state.dir) {
+        if (vm.scrolledDir != null && vm.scrolledDir != state.dir) {
+            listState.scrollToItem(0)
+            gridState.scrollToItem(0)
+            vm.listScroll = 0 to 0
+            vm.gridScroll = 0 to 0
+        }
+        vm.scrolledDir = state.dir
+    }
+
     BackHandler(enabled = state.selecting || state.dir != state.rootPath) {
         if (state.selecting) vm.clearSelection() else vm.up()
     }
@@ -160,6 +185,8 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
                     EmptyState(if (state.query.isBlank()) "Nothing here yet" else "No matches for “${state.query}”")
                 else -> Listing(
                     state = state,
+                    listState = listState,
+                    gridState = gridState,
                     onOpen = { entry ->
                         if (state.selecting) {
                             vm.toggleSelect(entry.path)
@@ -402,6 +429,8 @@ private fun Breadcrumbs(state: BrowserState, onNavigate: (String) -> Unit) {
 @Composable
 private fun Listing(
     state: BrowserState,
+    listState: LazyListState,
+    gridState: LazyGridState,
     onOpen: (Entry) -> Unit,
     onLongPress: (Entry) -> Unit,
     onMore: (Entry) -> Unit,
@@ -409,6 +438,7 @@ private fun Listing(
 ) {
     if (state.prefs.viewMode == ViewMode.GRID) {
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(110.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -424,7 +454,7 @@ private fun Listing(
             }
         }
     } else {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
             items(state.visibleEntries, key = { it.path }) { entry ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
