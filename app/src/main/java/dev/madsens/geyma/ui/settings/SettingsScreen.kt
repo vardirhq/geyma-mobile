@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import dev.madsens.geyma.BuildConfig
 import dev.madsens.geyma.GeymaApp
 import dev.madsens.geyma.ui.browser.shareFile
 import dev.madsens.geyma.theme.ACCENTS
@@ -323,7 +324,15 @@ fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
         item {
             SectionHeader("About")
             GeymaCard(modifier = Modifier.fillMaxWidth()) {
-                Text("Geyma Mobile 0.1.0", color = t.ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                // Read straight from BuildConfig so the version shown here always
+                // matches the installed APK — this is how on-device testing tells
+                // a fresh build apart from a stale one.
+                Text(
+                    "Geyma Mobile ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                    color = t.ink,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Old Norse — “to keep, to guard.” A file manager that remembers. " +

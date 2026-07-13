@@ -13,8 +13,12 @@ android {
         applicationId = "dev.madsens.geyma"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Bump BOTH on every user-facing change so the version shown in
+        // Settings > About lets on-device testing confirm the running build.
+        // versionCode is the definitive build discriminator; versionName is the
+        // human label.
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -36,6 +40,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     lint {
         // CI runs assembleDebug + test; lint runs locally via ./gradlew lint
