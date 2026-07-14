@@ -80,7 +80,7 @@ import java.io.File
  * file manager offers, "bring this back to me later."
  */
 @Composable
-fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (String) -> Unit) {
+fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onReveal: (String) -> Unit) {
     val t = LocalTheme.current
     val scope = rememberCoroutineScope()
     var summary by remember(path) { mutableStateOf<DossierSummary?>(null) }
@@ -177,7 +177,7 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
                         icon = Icons.Filled.FolderOpen,
                         label = if (s.trashed) "In trash" else "Show in files",
                         enabled = exists && !s.trashed,
-                        onClick = { PathUtils.parentOf(path)?.let(onBrowse) },
+                        onClick = { onReveal(path) },
                         modifier = Modifier.weight(1f),
                     )
                 }

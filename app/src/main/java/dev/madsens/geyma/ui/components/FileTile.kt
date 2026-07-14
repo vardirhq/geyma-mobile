@@ -2,6 +2,8 @@
 
 package dev.madsens.geyma.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -114,17 +117,35 @@ fun RowScope.EntryBadges(entry: Entry, size: Dp) {
     }
 }
 
+/**
+ * A fading emphasis level for a briefly-revealed entry: snaps up when
+ * [highlighted] turns on, then eases back to nothing when it clears, so the
+ * "Show in files" target flashes and settles rather than blinking off.
+ */
+@Composable
+private fun highlightAlpha(highlighted: Boolean): Float {
+    val alpha by animateFloatAsState(
+        targetValue = if (highlighted) 1f else 0f,
+        animationSpec = tween(durationMillis = if (highlighted) 220 else 700),
+        label = "reveal-highlight",
+    )
+    return alpha
+}
+
 @Composable
 fun FileRow(
     entry: Entry,
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    highlighted: Boolean = false,
 ) {
     val t = LocalTheme.current
     val shape = geymaShape()
+    val glow = highlightAlpha(highlighted)
     val fill = when {
         selected -> t.accent.copy(alpha = 0.16f)
+        glow > 0f -> t.accent.copy(alpha = 0.22f * glow)
         else -> androidx.compose.ui.graphics.Color.Transparent
     }
     Row(
@@ -132,6 +153,7 @@ fun FileRow(
             .fillMaxWidth()
             .clip(shape)
             .background(fill)
+            .then(if (glow > 0f) Modifier.border(BorderStroke(1.5.dp, t.accent.copy(alpha = glow)), shape) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -171,12 +193,19 @@ fun FileGridTile(
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    highlighted: Boolean = false,
 ) {
     val t = LocalTheme.current
     val shape = geymaShape()
-    val border = if (selected) BorderStroke(1.5.dp, t.accent) else BorderStroke(1.dp, t.border)
+    val glow = highlightAlpha(highlighted)
+    val border = when {
+        selected -> BorderStroke(1.5.dp, t.accent)
+        glow > 0f -> BorderStroke(1.5.dp, t.accent.copy(alpha = glow))
+        else -> BorderStroke(1.dp, t.border)
+    }
     val fill = when {
         selected -> t.accent.copy(alpha = 0.14f)
+        glow > 0f -> t.accent.copy(alpha = 0.18f * glow)
         t.tile == dev.madsens.geyma.theme.TileStyle.CARD -> t.card
         else -> androidx.compose.ui.graphics.Color.Transparent
     }

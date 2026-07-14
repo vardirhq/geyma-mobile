@@ -253,9 +253,9 @@ fun GeymaRoot(
                             app = app,
                             path = dossierPath!!,
                             onBack = { dossierPath = null },
-                            onBrowse = { path ->
+                            onReveal = { path ->
                                 closeOverlays()
-                                vm.open(path)
+                                vm.reveal(path)
                                 tab = Tab.FILES
                             },
                         )
