@@ -62,13 +62,24 @@ Package root: `dev.madsens.geyma` (app id `dev.madsens.geyma`, matching desktop)
   filesystem op *and* writes the journal/stars/trash/set-refs so they stay
   consistent. New file operations go through it, and every mutation must log a
   `FileEvent` (with `prevPath` for rename/move/trash) — that is what powers
-  timelines and ghost trails.
+  timelines and ghost trails. It is also the enforcement point for **seals**:
+  `rename`/`move`/`moveToTrash` refuse a sealed path (destructive ops also
+  refuse a folder holding a sealed descendant) by throwing `SealedException`,
+  whose message surfaces through the browser's existing error banner. Pure
+  helpers live beside it: `Ocr` (image-OCR eligibility + match snippets) and
+  `FolderInsight` (the "explain this folder" digest), both Android-free and
+  unit-tested. `OcrIndexer` is the Android/ML Kit side that fills `ocr_index`
+  on demand.
 - **`data/`** — Room (`GeymaDb`) for journal events, stars, trash registry,
-  working sets, the seen-files ledger, and revisits; DataStore (`Prefs`) for
-  appearance + view preferences. Path rebasing after a move/rename is done in
-  SQL across every path-bearing table (events/stars/set_items/seen_files/
-  revisits). SQL `LIKE` operands are escaped via `PathUtils.escapeLike` +
-  `ESCAPE '\'` so `%`/`_` in filenames don't act as wildcards.
+  working sets, the seen-files ledger, revisits, sticky **notes**, **seals**
+  (guarded paths), and the **`ocr_index`** (text recognized inside images);
+  DataStore (`Prefs`) for appearance + view preferences. Path rebasing after a
+  move/rename is done in SQL across *every* path-bearing table (events/stars/
+  set_items/seen_files/revisits/notes/seals/ocr_index) — a new path-keyed table
+  must join `rebaseAll` and the trash `removeTree` group in `FsRepository`, or
+  it silently desyncs on the first move. SQL `LIKE` operands are escaped via
+  `PathUtils.escapeLike` + `ESCAPE '\'` so `%`/`_` in filenames don't act as
+  wildcards.
 - **Schema migrations must be real and additive, never destructive.** The
   journal surviving app updates is the whole point of "an app that remembers,"
   so bump the `GeymaDb` version and add a `Migration` (see `MIGRATION_1_2`,
@@ -153,5 +164,9 @@ Batch rename, rule-based (smart) working sets, SFTP/SMB remotes, and the local
 AI (Ollama) features. (Zip-format archive browsing + extraction is done — see
 `archive/`; non-zip formats like tar/gz/7z/rar are still external.) (Some mobile-original
 features have no desktop equivalent — sweep, almanac, echoes/revisits, the
-share-target inbox — so "port from desktop" and "matches desktop" don't apply
-to those; keep them internally consistent instead.)
+share-target inbox, pinned **notes**, **seals**, the "why is this here?"
+provenance line, "**explain this folder**", "**pack a set for offline**", and
+**OCR image-text search** — so "port from desktop" and "matches desktop" don't
+apply to those; keep them internally consistent instead.) On-device LLM
+inference was considered for "explain this folder" and deliberately dropped in
+favour of the pure `FolderInsight` heuristic, keeping Geyma zero-network.
