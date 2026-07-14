@@ -218,3 +218,76 @@ interface RevisitDao {
     @Query("DELETE FROM revisits WHERE path = :path OR path LIKE :pathLike || '/%' ESCAPE '\\'")
     suspend fun removeTree(path: String, pathLike: String)
 }
+
+@Dao
+interface NoteDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun set(note: Note)
+
+    @Query("DELETE FROM notes WHERE path = :path")
+    suspend fun clear(path: String)
+
+    @Query("SELECT * FROM notes ORDER BY updatedMs DESC")
+    fun all(): Flow<List<Note>>
+
+    @Query("SELECT * FROM notes WHERE path = :path")
+    suspend fun byPath(path: String): Note?
+
+    @Query("SELECT * FROM notes WHERE path = :path")
+    fun observe(path: String): Flow<Note?>
+
+    @Query("SELECT path FROM notes")
+    suspend fun allPaths(): List<String>
+
+    @Query("SELECT * FROM notes ORDER BY updatedMs ASC")
+    suspend fun snapshot(): List<Note>
+
+    @Query(
+        "UPDATE OR REPLACE notes SET path = :newBase || substr(path, length(:oldBase) + 1) " +
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
+    )
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
+
+    @Query("DELETE FROM notes WHERE path = :path OR path LIKE :pathLike || '/%' ESCAPE '\\'")
+    suspend fun removeTree(path: String, pathLike: String)
+}
+
+@Dao
+interface SealDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun add(seal: Seal)
+
+    @Query("DELETE FROM seals WHERE path = :path")
+    suspend fun remove(path: String)
+
+    @Query("SELECT * FROM seals ORDER BY whenMs DESC")
+    fun all(): Flow<List<Seal>>
+
+    @Query("SELECT path FROM seals")
+    suspend fun allPaths(): List<String>
+
+    @Query("SELECT * FROM seals ORDER BY whenMs ASC")
+    suspend fun snapshot(): List<Seal>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM seals WHERE path = :path)")
+    suspend fun isSealed(path: String): Boolean
+
+    /**
+     * True if [path] itself or anything beneath it is sealed — so a destructive
+     * op on a folder can refuse to swallow a sealed file living inside it.
+     */
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM seals WHERE path = :path " +
+            "OR path LIKE :pathLike || '/%' ESCAPE '\\')",
+    )
+    suspend fun anySealedUnder(path: String, pathLike: String): Boolean
+
+    @Query(
+        "UPDATE OR REPLACE seals SET path = :newBase || substr(path, length(:oldBase) + 1) " +
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
+    )
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
+
+    @Query("DELETE FROM seals WHERE path = :path OR path LIKE :pathLike || '/%' ESCAPE '\\'")
+    suspend fun removeTree(path: String, pathLike: String)
+}

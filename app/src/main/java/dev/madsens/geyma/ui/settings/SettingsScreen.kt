@@ -85,7 +85,10 @@ fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                     context.contentResolver.openInputStream(uri)?.use { app.continuity.import(it) }
                 }.onSuccess { summary ->
                     val msg = summary?.let {
-                        "Merged ${it.events} events, ${it.stars} stars, ${it.sets} sets"
+                        buildString {
+                            append("Merged ${it.events} events, ${it.stars} stars, ${it.sets} sets")
+                            if (it.notes > 0 || it.seals > 0) append(", ${it.notes} notes, ${it.seals} seals")
+                        }
                     } ?: "Could not read that file"
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }.onFailure {

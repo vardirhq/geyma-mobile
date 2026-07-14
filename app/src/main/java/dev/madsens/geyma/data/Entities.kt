@@ -36,6 +36,16 @@ object EventActions {
 
     /** The user opened a file through Geyma. */
     const val OPENED = "opened"
+
+    /** A note was pinned to (or updated on) a file — a memory left for future self. */
+    const val NOTED = "noted"
+
+    /** A file was sealed (guarded against accidental change) or unsealed. */
+    const val SEALED = "sealed"
+    const val UNSEALED = "unsealed"
+
+    /** A working set was packed into a self-contained archive for offline carry. */
+    const val PACKED = "packed"
 }
 
 /**
@@ -100,4 +110,31 @@ data class Revisit(
     val dueMs: Long,
     val note: String? = null,
     val createdMs: Long = System.currentTimeMillis(),
+)
+
+/**
+ * A sticky note pinned to a file or folder — the thing every file manager is
+ * missing. "Final export, don't touch." "Sent to client 3/4." It rides along
+ * through moves and renames like every other reference Geyma keeps, and is the
+ * mobile-original take on leaving a memory *for* a file rather than about it.
+ */
+@Entity(tableName = "notes")
+data class Note(
+    @PrimaryKey val path: String,
+    val text: String,
+    val updatedMs: Long = System.currentTimeMillis(),
+    val createdMs: Long = System.currentTimeMillis(),
+)
+
+/**
+ * A seal on a file or folder — the *guard* pillar made literal. A sealed entry
+ * cannot be renamed, moved, trashed or deleted through Geyma until it is
+ * explicitly unsealed, so a precious file survives a fat-fingered swipe. Like
+ * everything else, the reference follows the file when an unsealed ancestor is
+ * renamed or moved.
+ */
+@Entity(tableName = "seals")
+data class Seal(
+    @PrimaryKey val path: String,
+    val whenMs: Long = System.currentTimeMillis(),
 )

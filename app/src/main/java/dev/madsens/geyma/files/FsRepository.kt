@@ -3,7 +3,9 @@ package dev.madsens.geyma.files
 import dev.madsens.geyma.data.EventActions
 import dev.madsens.geyma.data.FileEvent
 import dev.madsens.geyma.data.GeymaDb
+import dev.madsens.geyma.data.Note
 import dev.madsens.geyma.data.Revisit
+import dev.madsens.geyma.data.Seal
 import dev.madsens.geyma.data.SeenFile
 import dev.madsens.geyma.data.Star
 import dev.madsens.geyma.data.TrashEntry
@@ -15,6 +17,7 @@ import dev.madsens.geyma.insights.DuplicateGroup
 import dev.madsens.geyma.insights.Echoes
 import dev.madsens.geyma.insights.FileFingerprint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -33,7 +36,15 @@ data class Entry(
     val childCount: Int? = null,
     val starred: Boolean = false,
     val hidden: Boolean = false,
+    val noted: Boolean = false,
+    val sealed: Boolean = false,
 )
+
+/**
+ * Thrown when a mutation is refused because the target — or, for a destructive
+ * op, something living inside it — is sealed. Carries a user-facing message.
+ */
+class SealedException(message: String) : IOException(message)
 
 /** A faint marker where a file used to be — Geyma's ghost trail. */
 data class GhostTrail(
@@ -96,6 +107,8 @@ class FsRepository(private val db: GeymaDb) {
     private val sets get() = db.sets()
     private val seen get() = db.seen()
     private val revisits get() = db.revisits()
+    private val notes get() = db.notes()
+    private val seals get() = db.seals()
 
     val trashDir: File = File(StorageRoots.primaryPath(), ".geyma/trash")
 
@@ -103,6 +116,8 @@ class FsRepository(private val db: GeymaDb) {
         val dir = File(path)
         val children = dir.listFiles() ?: return@withContext emptyList()
         val starredPaths = stars.allPaths().toHashSet()
+        val notedPaths = notes.allPaths().toHashSet()
+        val sealedPaths = seals.allPaths().toHashSet()
         children
             .filter { showHidden || !it.name.startsWith(".") }
             .map { f ->
@@ -117,6 +132,8 @@ class FsRepository(private val db: GeymaDb) {
                     childCount = if (isDir) f.list()?.size else null,
                     starred = f.absolutePath in starredPaths,
                     hidden = f.name.startsWith("."),
+                    noted = f.absolutePath in notedPaths,
+                    sealed = f.absolutePath in sealedPaths,
                 )
             }
     }
@@ -285,6 +302,83 @@ class FsRepository(private val db: GeymaDb) {
         revisits.set(Revisit(path = path, dueMs = dueMs, note = note))
 
     suspend fun clearRevisit(path: String) = revisits.clear(path)
+
+    // --- Notes: a sticky note pinned to a file or folder ---
+
+    suspend fun noteFor(path: String): Note? = notes.byPath(path)
+
+    /** Live note for [path], so an open editor reflects rebases/removals. */
+    fun observeNote(path: String): Flow<Note?> = notes.observe(path)
+
+    /**
+     * Pin or update a note on [path]. A blank note clears it. The first save
+     * keeps its createdMs; every save bumps updatedMs, and both are journaled
+     * so a note leaving a mark shows up on the file's timeline.
+     */
+    suspend fun setNote(path: String, text: String) = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) {
+            clearNote(path)
+            return@withContext
+        }
+        val existing = notes.byPath(path)
+        val now = System.currentTimeMillis()
+        notes.set(
+            Note(
+                path = path,
+                text = trimmed,
+                createdMs = existing?.createdMs ?: now,
+                updatedMs = now,
+            ),
+        )
+        log(
+            EventActions.NOTED, path,
+            detail = if (existing == null) "note added" else "note updated",
+            isDir = File(path).isDirectory,
+        )
+    }
+
+    suspend fun clearNote(path: String) = withContext(Dispatchers.IO) {
+        if (notes.byPath(path) == null) return@withContext
+        notes.clear(path)
+        log(EventActions.NOTED, path, detail = "note removed", isDir = File(path).isDirectory)
+    }
+
+    // --- Seals: guard a file or folder against accidental change ---
+
+    suspend fun isSealed(path: String): Boolean = seals.isSealed(path)
+
+    suspend fun setSealed(path: String, sealed: Boolean) = withContext(Dispatchers.IO) {
+        val isDir = File(path).isDirectory
+        if (sealed) {
+            seals.add(Seal(path))
+            log(EventActions.SEALED, path, detail = "sealed", isDir = isDir)
+        } else {
+            seals.remove(path)
+            log(EventActions.UNSEALED, path, detail = "unsealed", isDir = isDir)
+        }
+    }
+
+    /** Refuse to relocate a sealed entry (rename/move change where it lives). */
+    private suspend fun requireUnsealed(path: String) {
+        if (seals.isSealed(path)) {
+            throw SealedException("${PathUtils.nameOf(path)} is sealed — unseal it first")
+        }
+    }
+
+    /**
+     * Refuse a destructive op (trash/delete) when the target itself is sealed,
+     * or when a sealed file lives anywhere inside it — so a sealed keepsake
+     * can't be lost by swiping away the folder that holds it.
+     */
+    private suspend fun requireDeletable(path: String) {
+        if (seals.isSealed(path)) {
+            throw SealedException("${PathUtils.nameOf(path)} is sealed — unseal it first")
+        }
+        if (seals.anySealedUnder(path, PathUtils.escapeLike(path))) {
+            throw SealedException("${PathUtils.nameOf(path)} holds a sealed file — unseal it first")
+        }
+    }
 
     /**
      * Journal-wide search: matches live files by name plus anything Geyma
@@ -456,6 +550,7 @@ class FsRepository(private val db: GeymaDb) {
 
     suspend fun rename(path: String, newName: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
+            requireUnsealed(path)
             val src = File(path)
             val dst = File(src.parentFile, uniqueNameIn(src.parent ?: "/", newName))
             if (!src.renameTo(dst)) throw IOException("Could not rename ${src.name}")
@@ -467,6 +562,9 @@ class FsRepository(private val db: GeymaDb) {
 
     suspend fun move(paths: List<String>, destDir: String): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
+            // Refuse the whole batch up front if any item is sealed, so a mixed
+            // selection never half-moves before hitting the guarded one.
+            for (path in paths) requireUnsealed(path)
             var moved = 0
             for (path in paths) {
                 val src = File(path)
@@ -512,6 +610,9 @@ class FsRepository(private val db: GeymaDb) {
     suspend fun moveToTrash(paths: List<String>): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             if (!trashDir.exists()) trashDir.mkdirs()
+            // A sealed file — or a folder holding one — is refused before any of
+            // the batch is touched, so the guard can't be bypassed by volume.
+            for (path in paths) requireDeletable(path)
             var trashed = 0
             for (path in paths) {
                 val src = File(path)
@@ -532,6 +633,8 @@ class FsRepository(private val db: GeymaDb) {
                 stars.removeTree(path, pathLike)
                 seen.removeTree(path, pathLike)
                 revisits.removeTree(path, pathLike)
+                notes.removeTree(path, pathLike)
+                seals.removeTree(path, pathLike)
                 trashed++
             }
             trashed
@@ -614,6 +717,8 @@ class FsRepository(private val db: GeymaDb) {
         sets.rebasePaths(oldBase, oldBaseLike, newBase)
         seen.rebasePaths(oldBase, oldBaseLike, newBase)
         revisits.rebasePaths(oldBase, oldBaseLike, newBase)
+        notes.rebasePaths(oldBase, oldBaseLike, newBase)
+        seals.rebasePaths(oldBase, oldBaseLike, newBase)
     }
 
     private suspend fun log(
