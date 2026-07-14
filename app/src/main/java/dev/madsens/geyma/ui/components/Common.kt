@@ -17,6 +17,10 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -97,6 +101,10 @@ object EventUi {
         EventActions.DELETED -> "Permanently deleted"
         EventActions.STARRED -> "Starred"
         EventActions.UNSTARRED -> "Unstarred"
+        EventActions.NOTED -> "Note"
+        EventActions.SEALED -> "Sealed"
+        EventActions.UNSEALED -> "Unsealed"
+        EventActions.PACKED -> "Packed"
         else -> action.replaceFirstChar { it.uppercase() }
     }
 
@@ -110,6 +118,10 @@ object EventUi {
         EventActions.DELETED -> Icons.Filled.DeleteForever
         EventActions.STARRED -> Icons.Filled.Star
         EventActions.UNSTARRED -> Icons.Filled.StarBorder
+        EventActions.NOTED -> Icons.Filled.EditNote
+        EventActions.SEALED -> Icons.Filled.Lock
+        EventActions.UNSEALED -> Icons.Filled.LockOpen
+        EventActions.PACKED -> Icons.Filled.Inventory2
         else -> Icons.Filled.Add
     }
 }

@@ -313,7 +313,11 @@ fun GeymaRoot(
                             onOpenEchoes = { echoesOpen = true },
                             onOpenDossier = { path -> dossierPath = path },
                         )
-                        Tab.FILES -> BrowserScreen(app, vm, onView = { openEntry(it.path) })
+                        Tab.FILES -> BrowserScreen(
+                            app, vm,
+                            onView = { openEntry(it.path) },
+                            onOpenDossier = { path -> dossierPath = path },
+                        )
                         Tab.TIMELINE -> TimelineScreen(app) { path ->
                             vm.open(path)
                             tab = Tab.FILES

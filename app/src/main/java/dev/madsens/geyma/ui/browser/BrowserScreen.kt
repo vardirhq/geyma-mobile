@@ -41,6 +41,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlaylistAdd
@@ -111,7 +114,12 @@ import dev.madsens.geyma.ui.components.timeAgo
 import kotlinx.coroutines.launch
 
 @Composable
-fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) {
+fun BrowserScreen(
+    app: GeymaApp,
+    vm: BrowserViewModel,
+    onView: (Entry) -> Unit,
+    onOpenDossier: (String) -> Unit = {},
+) {
     val t = LocalTheme.current
     val state by vm.state.collectAsState()
     val context = LocalContext.current
@@ -254,6 +262,10 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
                 vm.setStarred(entry.path, !entry.starred)
                 sheetEntry = null
             },
+            onSeal = {
+                vm.setSealed(entry.path, !entry.sealed)
+                sheetEntry = null
+            },
             onRename = {
                 sheetEntry = null
                 renameTarget = entry
@@ -265,6 +277,10 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
             onAddToSet = {
                 sheetEntry = null
                 addToSetTarget = listOf(entry.path)
+            },
+            onDetails = {
+                sheetEntry = null
+                onOpenDossier(entry.path)
             },
         )
     }
@@ -630,9 +646,11 @@ private fun EntrySheet(
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onStar: () -> Unit,
+    onSeal: () -> Unit,
     onRename: () -> Unit,
     onTrash: () -> Unit,
     onAddToSet: () -> Unit,
+    onDetails: () -> Unit,
 ) {
     val t = LocalTheme.current
     var history by remember(entry.path) { mutableStateOf<List<FileEvent>>(emptyList()) }
@@ -654,13 +672,23 @@ private fun EntrySheet(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 SheetAction(Icons.Filled.OpenInNew, "Open", onOpen)
+                SheetAction(Icons.Filled.Info, "Details", onDetails)
                 if (!entry.isDir) SheetAction(Icons.Filled.Share, "Share", onShare)
                 SheetAction(
                     if (entry.starred) Icons.Filled.Star else Icons.Filled.StarBorder,
                     if (entry.starred) "Unstar" else "Star",
                     onStar,
+                )
+                SheetAction(
+                    if (entry.sealed) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    if (entry.sealed) "Unseal" else "Seal",
+                    onSeal,
+                    tint = if (entry.sealed) LocalTheme.current.accent else null,
                 )
                 SheetAction(Icons.Filled.DriveFileRenameOutline, "Rename", onRename)
                 SheetAction(Icons.Filled.PlaylistAdd, "To set", onAddToSet)

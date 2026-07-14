@@ -25,17 +25,21 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +93,27 @@ fun KindBadge(entry: Entry, size: androidx.compose.ui.unit.Dp, thumbnails: Boole
     }
 }
 
+/**
+ * The little cluster of state markers a tile carries — sealed (guarded),
+ * noted (has a sticky note), starred — shown in that order of consequence.
+ */
+@Composable
+fun RowScope.EntryBadges(entry: Entry, size: Dp) {
+    val t = LocalTheme.current
+    if (entry.sealed) {
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.Lock, contentDescription = "Sealed", tint = t.inkSoft, modifier = Modifier.size(size))
+    }
+    if (entry.noted) {
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.EditNote, contentDescription = "Has a note", tint = t.accent, modifier = Modifier.size(size))
+    }
+    if (entry.starred) {
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.Star, contentDescription = "Starred", tint = t.accent, modifier = Modifier.size(size))
+    }
+}
+
 @Composable
 fun FileRow(
     entry: Entry,
@@ -123,10 +148,7 @@ fun FileRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                if (entry.starred) {
-                    Spacer(Modifier.width(6.dp))
-                    Icon(Icons.Filled.Star, contentDescription = "Starred", tint = t.accent, modifier = Modifier.size(14.dp))
-                }
+                EntryBadges(entry, 14.dp)
             }
             Text(
                 text = if (entry.isDir) {
@@ -180,10 +202,7 @@ fun FileGridTile(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            if (entry.starred) {
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Filled.Star, contentDescription = "Starred", tint = t.accent, modifier = Modifier.size(12.dp))
-            }
+            EntryBadges(entry, 12.dp)
         }
         Text(
             text = if (entry.isDir) entry.childCount?.let { "$it items" } ?: "Folder" else PathUtils.humanSize(entry.size),
