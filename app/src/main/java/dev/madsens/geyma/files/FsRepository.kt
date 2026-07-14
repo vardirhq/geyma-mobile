@@ -22,9 +22,14 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 data class Entry(
     val name: String,
@@ -547,6 +552,81 @@ class FsRepository(private val db: GeymaDb) {
                 destDir.absolutePath
             }
         }
+
+    /**
+     * Pack a working set's files into one self-contained zip under
+     * "Geyma Packs" — the whole set carried offline in a single shareable file.
+     * Missing members are skipped, folders go in whole, and colliding names are
+     * disambiguated so nothing is silently overwritten. Journaled as a PACKED
+     * event on the resulting archive.
+     */
+    suspend fun packSet(setName: String, paths: List<String>): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val members = paths.map(::File).filter { it.exists() }
+            if (members.isEmpty()) throw IOException("Nothing in this set is on disk to pack")
+            val packsDir = File(StorageRoots.primaryPath(), "Geyma Packs").apply { mkdirs() }
+            val base = setName.ifBlank { "set" }.replace(Regex("[^A-Za-z0-9 _-]"), "_").trim().ifBlank { "set" }
+            val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+            val zipFile = File(packsDir, uniqueNameIn(packsDir.absolutePath, "$base-$stamp.zip"))
+            val used = HashSet<String>()
+            ZipOutputStream(zipFile.outputStream().buffered()).use { zos ->
+                for (member in members) {
+                    if (member.isDirectory) {
+                        zipTree(zos, member, dedupeEntryName(used, member.name))
+                    } else {
+                        zos.putNextEntry(ZipEntry(dedupeEntryName(used, member.name)))
+                        member.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+                }
+            }
+            log(
+                EventActions.PACKED, zipFile.absolutePath,
+                detail = "packed ${members.size} item${if (members.size == 1) "" else "s"} from “$setName”",
+                isDir = false,
+            )
+            zipFile.absolutePath
+        }
+    }
+
+    /** Add a directory tree to [zos] under [rootEntryName], preserving structure. */
+    private fun zipTree(zos: ZipOutputStream, root: File, rootEntryName: String) {
+        val stack = ArrayDeque<Pair<File, String>>()
+        stack.addLast(root to rootEntryName)
+        while (stack.isNotEmpty()) {
+            val (dir, prefix) = stack.removeLast()
+            val kids = dir.listFiles()
+            if (kids == null || kids.isEmpty()) {
+                zos.putNextEntry(ZipEntry("$prefix/"))
+                zos.closeEntry()
+                continue
+            }
+            for (child in kids) {
+                val entryName = "$prefix/${child.name}"
+                if (child.isDirectory) {
+                    stack.addLast(child to entryName)
+                } else {
+                    zos.putNextEntry(ZipEntry(entryName))
+                    child.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
+            }
+        }
+    }
+
+    /** Keep a top-level zip entry name unique so two "photo.jpg" don't clobber. */
+    private fun dedupeEntryName(used: MutableSet<String>, name: String): String {
+        if (used.add(name)) return name
+        val dot = name.lastIndexOf('.')
+        val stem = if (dot > 0) name.substring(0, dot) else name
+        val ext = if (dot > 0) name.substring(dot) else ""
+        var i = 2
+        while (true) {
+            val candidate = "$stem ($i)$ext"
+            if (used.add(candidate)) return candidate
+            i++
+        }
+    }
 
     suspend fun rename(path: String, newName: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
