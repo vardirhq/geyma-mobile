@@ -35,6 +35,10 @@ data class BrowserState(
     val clipboard: Clipboard? = null,
     val error: String? = null,
     val prefs: ViewPrefs = ViewPrefs(),
+    // A file the browser should scroll to and briefly highlight once this folder
+    // has loaded — set by "Show in files" so you land on the file, not just its
+    // folder. Cleared as soon as the reveal is handled (or you navigate away).
+    val reveal: String? = null,
 ) {
     val selecting: Boolean get() = selection.isNotEmpty()
 
@@ -89,8 +93,30 @@ class BrowserViewModel(private val repo: FsRepository, private val prefs: Prefs)
     }
 
     fun open(dir: String) {
-        _state.value = _state.value.copy(dir = dir, query = "", selection = emptySet())
+        _state.value = _state.value.copy(dir = dir, query = "", selection = emptySet(), reveal = null)
         refresh()
+    }
+
+    /**
+     * Open the folder holding [path] and flag the file itself for reveal, so the
+     * browser scrolls to and highlights it once the listing loads. If the path has
+     * no parent (already a root), it just opens there with nothing to reveal.
+     */
+    fun reveal(path: String) {
+        val parent = PathUtils.parentOf(path)
+        if (parent == null) {
+            open(path)
+            return
+        }
+        // Flip loading in the same update so the browser's reveal effect never
+        // fires against the *old* folder's entries during the swap.
+        _state.value = _state.value.copy(dir = parent, query = "", selection = emptySet(), reveal = path, loading = true)
+        refresh()
+    }
+
+    /** Drop the pending reveal once the browser has scrolled to the target. */
+    fun clearReveal() {
+        if (_state.value.reveal != null) _state.value = _state.value.copy(reveal = null)
     }
 
     /** Back navigation: up one level until the root, then signal false. */

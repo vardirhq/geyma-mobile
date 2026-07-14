@@ -160,6 +160,28 @@ fun BrowserScreen(
         }
     }
 
+    // "Show in files" lands you on a folder with a specific file to find. Once the
+    // listing has loaded, scroll that file into view and flash it, then let the VM
+    // drop the flag so a later refresh doesn't yank the scroll back to it.
+    var highlightPath by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.reveal, state.loading) {
+        val target = state.reveal
+        if (target == null || state.loading) return@LaunchedEffect
+        val index = state.visibleEntries.indexOfFirst { it.path == target }
+        if (index >= 0) {
+            if (state.prefs.viewMode == ViewMode.GRID) gridState.scrollToItem(index)
+            else listState.scrollToItem(index)
+            highlightPath = target
+        }
+        vm.clearReveal()
+    }
+    LaunchedEffect(highlightPath) {
+        if (highlightPath != null) {
+            kotlinx.coroutines.delay(1800)
+            highlightPath = null
+        }
+    }
+
     BackHandler(enabled = state.selecting || state.dir != state.rootPath) {
         if (state.selecting) vm.clearSelection() else vm.up()
     }
@@ -210,6 +232,7 @@ fun BrowserScreen(
                     state = state,
                     listState = listState,
                     gridState = gridState,
+                    highlightPath = highlightPath,
                     onOpen = { entry ->
                         if (state.selecting) {
                             vm.toggleSelect(entry.path)
@@ -490,6 +513,7 @@ private fun Listing(
     state: BrowserState,
     listState: LazyListState,
     gridState: LazyGridState,
+    highlightPath: String?,
     onOpen: (Entry) -> Unit,
     onLongPress: (Entry) -> Unit,
     onMore: (Entry) -> Unit,
@@ -507,6 +531,7 @@ private fun Listing(
                 FileGridTile(
                     entry = entry,
                     selected = entry.path in state.selection,
+                    highlighted = entry.path == highlightPath,
                     onClick = { onOpen(entry) },
                     onLongClick = { onLongPress(entry) },
                 )
@@ -520,6 +545,7 @@ private fun Listing(
                         FileRow(
                             entry = entry,
                             selected = entry.path in state.selection,
+                            highlighted = entry.path == highlightPath,
                             onClick = { onOpen(entry) },
                             onLongClick = { onLongPress(entry) },
                         )
