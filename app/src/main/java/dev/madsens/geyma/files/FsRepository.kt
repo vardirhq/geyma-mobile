@@ -3,7 +3,9 @@ package dev.madsens.geyma.files
 import dev.madsens.geyma.data.EventActions
 import dev.madsens.geyma.data.FileEvent
 import dev.madsens.geyma.data.GeymaDb
+import dev.madsens.geyma.data.Note
 import dev.madsens.geyma.data.Revisit
+import dev.madsens.geyma.data.Seal
 import dev.madsens.geyma.data.SeenFile
 import dev.madsens.geyma.data.Star
 import dev.madsens.geyma.data.TrashEntry
@@ -15,13 +17,19 @@ import dev.madsens.geyma.insights.DuplicateGroup
 import dev.madsens.geyma.insights.Echoes
 import dev.madsens.geyma.insights.FileFingerprint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 data class Entry(
     val name: String,
@@ -33,7 +41,15 @@ data class Entry(
     val childCount: Int? = null,
     val starred: Boolean = false,
     val hidden: Boolean = false,
+    val noted: Boolean = false,
+    val sealed: Boolean = false,
 )
+
+/**
+ * Thrown when a mutation is refused because the target — or, for a destructive
+ * op, something living inside it — is sealed. Carries a user-facing message.
+ */
+class SealedException(message: String) : IOException(message)
 
 /** A faint marker where a file used to be — Geyma's ghost trail. */
 data class GhostTrail(
@@ -73,6 +89,13 @@ enum class ScanPhase { WALKING, COMPARING }
 /** Live progress of a duplicate scan: [done] of [total] in the current [phase]. */
 data class ScanProgress(val phase: ScanPhase, val done: Int, val total: Int)
 
+/** One image whose recognized text matched a search, with a match snippet. */
+data class OcrHit(
+    val name: String,
+    val path: String,
+    val snippet: String,
+)
+
 /** A neglected arrival surfaced on the Sweep screen. */
 data class SweepItem(
     val name: String,
@@ -96,6 +119,9 @@ class FsRepository(private val db: GeymaDb) {
     private val sets get() = db.sets()
     private val seen get() = db.seen()
     private val revisits get() = db.revisits()
+    private val notes get() = db.notes()
+    private val seals get() = db.seals()
+    private val ocr get() = db.ocr()
 
     val trashDir: File = File(StorageRoots.primaryPath(), ".geyma/trash")
 
@@ -103,6 +129,8 @@ class FsRepository(private val db: GeymaDb) {
         val dir = File(path)
         val children = dir.listFiles() ?: return@withContext emptyList()
         val starredPaths = stars.allPaths().toHashSet()
+        val notedPaths = notes.allPaths().toHashSet()
+        val sealedPaths = seals.allPaths().toHashSet()
         children
             .filter { showHidden || !it.name.startsWith(".") }
             .map { f ->
@@ -117,6 +145,8 @@ class FsRepository(private val db: GeymaDb) {
                     childCount = if (isDir) f.list()?.size else null,
                     starred = f.absolutePath in starredPaths,
                     hidden = f.name.startsWith("."),
+                    noted = f.absolutePath in notedPaths,
+                    sealed = f.absolutePath in sealedPaths,
                 )
             }
     }
@@ -286,6 +316,83 @@ class FsRepository(private val db: GeymaDb) {
 
     suspend fun clearRevisit(path: String) = revisits.clear(path)
 
+    // --- Notes: a sticky note pinned to a file or folder ---
+
+    suspend fun noteFor(path: String): Note? = notes.byPath(path)
+
+    /** Live note for [path], so an open editor reflects rebases/removals. */
+    fun observeNote(path: String): Flow<Note?> = notes.observe(path)
+
+    /**
+     * Pin or update a note on [path]. A blank note clears it. The first save
+     * keeps its createdMs; every save bumps updatedMs, and both are journaled
+     * so a note leaving a mark shows up on the file's timeline.
+     */
+    suspend fun setNote(path: String, text: String) = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) {
+            clearNote(path)
+            return@withContext
+        }
+        val existing = notes.byPath(path)
+        val now = System.currentTimeMillis()
+        notes.set(
+            Note(
+                path = path,
+                text = trimmed,
+                createdMs = existing?.createdMs ?: now,
+                updatedMs = now,
+            ),
+        )
+        log(
+            EventActions.NOTED, path,
+            detail = if (existing == null) "note added" else "note updated",
+            isDir = File(path).isDirectory,
+        )
+    }
+
+    suspend fun clearNote(path: String) = withContext(Dispatchers.IO) {
+        if (notes.byPath(path) == null) return@withContext
+        notes.clear(path)
+        log(EventActions.NOTED, path, detail = "note removed", isDir = File(path).isDirectory)
+    }
+
+    // --- Seals: guard a file or folder against accidental change ---
+
+    suspend fun isSealed(path: String): Boolean = seals.isSealed(path)
+
+    suspend fun setSealed(path: String, sealed: Boolean) = withContext(Dispatchers.IO) {
+        val isDir = File(path).isDirectory
+        if (sealed) {
+            seals.add(Seal(path))
+            log(EventActions.SEALED, path, detail = "sealed", isDir = isDir)
+        } else {
+            seals.remove(path)
+            log(EventActions.UNSEALED, path, detail = "unsealed", isDir = isDir)
+        }
+    }
+
+    /** Refuse to relocate a sealed entry (rename/move change where it lives). */
+    private suspend fun requireUnsealed(path: String) {
+        if (seals.isSealed(path)) {
+            throw SealedException("${PathUtils.nameOf(path)} is sealed — unseal it first")
+        }
+    }
+
+    /**
+     * Refuse a destructive op (trash/delete) when the target itself is sealed,
+     * or when a sealed file lives anywhere inside it — so a sealed keepsake
+     * can't be lost by swiping away the folder that holds it.
+     */
+    private suspend fun requireDeletable(path: String) {
+        if (seals.isSealed(path)) {
+            throw SealedException("${PathUtils.nameOf(path)} is sealed — unseal it first")
+        }
+        if (seals.anySealedUnder(path, PathUtils.escapeLike(path))) {
+            throw SealedException("${PathUtils.nameOf(path)} holds a sealed file — unseal it first")
+        }
+    }
+
     /**
      * Journal-wide search: matches live files by name plus anything Geyma
      * remembers — trashed, moved or renamed files — collapsed to one hit per
@@ -321,6 +428,31 @@ class FsRepository(private val db: GeymaDb) {
             )
         }
         byFile.values.sortedByDescending { it.lastWhenMs }
+    }
+
+    /** How many images currently have recognized text banked for search. */
+    suspend fun ocrIndexedCount(): Int = ocr.count()
+
+    /**
+     * Find images whose recognized text contains [query] — "find my file by
+     * what's written inside it." Each hit carries a one-line snippet of the
+     * match. Rows whose image is gone are dropped (and swept from the index).
+     */
+    suspend fun searchImageText(query: String): List<OcrHit> = withContext(Dispatchers.IO) {
+        val q = query.trim()
+        if (q.isBlank()) return@withContext emptyList()
+        ocr.search(PathUtils.escapeLike(q)).mapNotNull { row ->
+            val f = File(row.path)
+            if (!f.exists()) {
+                ocr.clear(row.path)
+                return@mapNotNull null
+            }
+            OcrHit(
+                path = row.path,
+                name = PathUtils.nameOf(row.path),
+                snippet = Ocr.snippet(row.text, q),
+            )
+        }
     }
 
     /** Note that the user opened a file, both in the journal and the seen-ledger. */
@@ -454,8 +586,84 @@ class FsRepository(private val db: GeymaDb) {
             }
         }
 
+    /**
+     * Pack a working set's files into one self-contained zip under
+     * "Geyma Packs" — the whole set carried offline in a single shareable file.
+     * Missing members are skipped, folders go in whole, and colliding names are
+     * disambiguated so nothing is silently overwritten. Journaled as a PACKED
+     * event on the resulting archive.
+     */
+    suspend fun packSet(setName: String, paths: List<String>): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val members = paths.map(::File).filter { it.exists() }
+            if (members.isEmpty()) throw IOException("Nothing in this set is on disk to pack")
+            val packsDir = File(StorageRoots.primaryPath(), "Geyma Packs").apply { mkdirs() }
+            val base = setName.ifBlank { "set" }.replace(Regex("[^A-Za-z0-9 _-]"), "_").trim().ifBlank { "set" }
+            val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+            val zipFile = File(packsDir, uniqueNameIn(packsDir.absolutePath, "$base-$stamp.zip"))
+            val used = HashSet<String>()
+            ZipOutputStream(zipFile.outputStream().buffered()).use { zos ->
+                for (member in members) {
+                    if (member.isDirectory) {
+                        zipTree(zos, member, dedupeEntryName(used, member.name))
+                    } else {
+                        zos.putNextEntry(ZipEntry(dedupeEntryName(used, member.name)))
+                        member.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+                }
+            }
+            log(
+                EventActions.PACKED, zipFile.absolutePath,
+                detail = "packed ${members.size} item${if (members.size == 1) "" else "s"} from “$setName”",
+                isDir = false,
+            )
+            zipFile.absolutePath
+        }
+    }
+
+    /** Add a directory tree to [zos] under [rootEntryName], preserving structure. */
+    private fun zipTree(zos: ZipOutputStream, root: File, rootEntryName: String) {
+        val stack = ArrayDeque<Pair<File, String>>()
+        stack.addLast(root to rootEntryName)
+        while (stack.isNotEmpty()) {
+            val (dir, prefix) = stack.removeLast()
+            val kids = dir.listFiles()
+            if (kids == null || kids.isEmpty()) {
+                zos.putNextEntry(ZipEntry("$prefix/"))
+                zos.closeEntry()
+                continue
+            }
+            for (child in kids) {
+                val entryName = "$prefix/${child.name}"
+                if (child.isDirectory) {
+                    stack.addLast(child to entryName)
+                } else {
+                    zos.putNextEntry(ZipEntry(entryName))
+                    child.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
+            }
+        }
+    }
+
+    /** Keep a top-level zip entry name unique so two "photo.jpg" don't clobber. */
+    private fun dedupeEntryName(used: MutableSet<String>, name: String): String {
+        if (used.add(name)) return name
+        val dot = name.lastIndexOf('.')
+        val stem = if (dot > 0) name.substring(0, dot) else name
+        val ext = if (dot > 0) name.substring(dot) else ""
+        var i = 2
+        while (true) {
+            val candidate = "$stem ($i)$ext"
+            if (used.add(candidate)) return candidate
+            i++
+        }
+    }
+
     suspend fun rename(path: String, newName: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
+            requireUnsealed(path)
             val src = File(path)
             val dst = File(src.parentFile, uniqueNameIn(src.parent ?: "/", newName))
             if (!src.renameTo(dst)) throw IOException("Could not rename ${src.name}")
@@ -467,6 +675,9 @@ class FsRepository(private val db: GeymaDb) {
 
     suspend fun move(paths: List<String>, destDir: String): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
+            // Refuse the whole batch up front if any item is sealed, so a mixed
+            // selection never half-moves before hitting the guarded one.
+            for (path in paths) requireUnsealed(path)
             var moved = 0
             for (path in paths) {
                 val src = File(path)
@@ -512,6 +723,9 @@ class FsRepository(private val db: GeymaDb) {
     suspend fun moveToTrash(paths: List<String>): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             if (!trashDir.exists()) trashDir.mkdirs()
+            // A sealed file — or a folder holding one — is refused before any of
+            // the batch is touched, so the guard can't be bypassed by volume.
+            for (path in paths) requireDeletable(path)
             var trashed = 0
             for (path in paths) {
                 val src = File(path)
@@ -532,6 +746,9 @@ class FsRepository(private val db: GeymaDb) {
                 stars.removeTree(path, pathLike)
                 seen.removeTree(path, pathLike)
                 revisits.removeTree(path, pathLike)
+                notes.removeTree(path, pathLike)
+                seals.removeTree(path, pathLike)
+                ocr.removeTree(path, pathLike)
                 trashed++
             }
             trashed
@@ -614,6 +831,9 @@ class FsRepository(private val db: GeymaDb) {
         sets.rebasePaths(oldBase, oldBaseLike, newBase)
         seen.rebasePaths(oldBase, oldBaseLike, newBase)
         revisits.rebasePaths(oldBase, oldBaseLike, newBase)
+        notes.rebasePaths(oldBase, oldBaseLike, newBase)
+        seals.rebasePaths(oldBase, oldBaseLike, newBase)
+        ocr.rebasePaths(oldBase, oldBaseLike, newBase)
     }
 
     private suspend fun log(

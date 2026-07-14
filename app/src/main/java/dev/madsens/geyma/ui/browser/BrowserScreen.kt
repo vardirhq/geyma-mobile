@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -41,6 +42,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlaylistAdd
@@ -111,11 +115,17 @@ import dev.madsens.geyma.ui.components.timeAgo
 import kotlinx.coroutines.launch
 
 @Composable
-fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) {
+fun BrowserScreen(
+    app: GeymaApp,
+    vm: BrowserViewModel,
+    onView: (Entry) -> Unit,
+    onOpenDossier: (String) -> Unit = {},
+) {
     val t = LocalTheme.current
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var searchOpen by remember { mutableStateOf(false) }
+    var showInsight by remember(state.dir) { mutableStateOf(false) }
     var sheetEntry by remember { mutableStateOf<Entry?>(null) }
     var renameTarget by remember { mutableStateOf<Entry?>(null) }
     var newFolderOpen by remember { mutableStateOf(false) }
@@ -159,12 +169,18 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
             vm = vm,
             state = state,
             searchOpen = searchOpen,
+            insightOn = showInsight,
+            onToggleInsight = { showInsight = !showInsight },
             onToggleSearch = {
                 searchOpen = !searchOpen
                 if (!searchOpen) vm.setQuery("")
             },
         )
         Breadcrumbs(state) { vm.open(it) }
+
+        if (showInsight && state.entries.isNotEmpty()) {
+            FolderDigestBanner(state.entries)
+        }
 
         state.error?.let { err ->
             Row(
@@ -254,6 +270,10 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
                 vm.setStarred(entry.path, !entry.starred)
                 sheetEntry = null
             },
+            onSeal = {
+                vm.setSealed(entry.path, !entry.sealed)
+                sheetEntry = null
+            },
             onRename = {
                 sheetEntry = null
                 renameTarget = entry
@@ -265,6 +285,10 @@ fun BrowserScreen(app: GeymaApp, vm: BrowserViewModel, onView: (Entry) -> Unit) 
             onAddToSet = {
                 sheetEntry = null
                 addToSetTarget = listOf(entry.path)
+            },
+            onDetails = {
+                sheetEntry = null
+                onOpenDossier(entry.path)
             },
         )
     }
@@ -313,6 +337,8 @@ private fun BrowserTopBar(
     vm: BrowserViewModel,
     state: BrowserState,
     searchOpen: Boolean,
+    insightOn: Boolean,
+    onToggleInsight: () -> Unit,
     onToggleSearch: () -> Unit,
 ) {
     val t = LocalTheme.current
@@ -329,6 +355,9 @@ private fun BrowserTopBar(
                 fontSize = 20.sp,
                 modifier = Modifier.padding(start = 8.dp).weight(1f),
             )
+            IconButton(onClick = onToggleInsight) {
+                Icon(Icons.Filled.AutoAwesome, "Explain this folder", tint = if (insightOn) t.accent else t.inkSoft)
+            }
             IconButton(onClick = onToggleSearch) {
                 Icon(Icons.Filled.Search, "Search", tint = if (searchOpen) t.accent else t.inkSoft)
             }
@@ -393,6 +422,29 @@ private fun BrowserTopBar(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
+    }
+}
+
+/**
+ * The "explain this folder" one-liner — a plain-language read of what the
+ * current folder holds, composed purely from the entries already on screen.
+ */
+@Composable
+private fun FolderDigestBanner(entries: List<Entry>) {
+    val t = LocalTheme.current
+    val digest = remember(entries) { dev.madsens.geyma.files.FolderInsight.describe(entries) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(geymaShape())
+            .background(t.accent.copy(alpha = 0.10f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.AutoAwesome, null, tint = t.accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(digest.sentence, color = t.ink, fontSize = 13.sp)
     }
 }
 
@@ -630,9 +682,11 @@ private fun EntrySheet(
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onStar: () -> Unit,
+    onSeal: () -> Unit,
     onRename: () -> Unit,
     onTrash: () -> Unit,
     onAddToSet: () -> Unit,
+    onDetails: () -> Unit,
 ) {
     val t = LocalTheme.current
     var history by remember(entry.path) { mutableStateOf<List<FileEvent>>(emptyList()) }
@@ -654,13 +708,23 @@ private fun EntrySheet(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 SheetAction(Icons.Filled.OpenInNew, "Open", onOpen)
+                SheetAction(Icons.Filled.Info, "Details", onDetails)
                 if (!entry.isDir) SheetAction(Icons.Filled.Share, "Share", onShare)
                 SheetAction(
                     if (entry.starred) Icons.Filled.Star else Icons.Filled.StarBorder,
                     if (entry.starred) "Unstar" else "Star",
                     onStar,
+                )
+                SheetAction(
+                    if (entry.sealed) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    if (entry.sealed) "Unseal" else "Seal",
+                    onSeal,
+                    tint = if (entry.sealed) LocalTheme.current.accent else null,
                 )
                 SheetAction(Icons.Filled.DriveFileRenameOutline, "Rename", onRename)
                 SheetAction(Icons.Filled.PlaylistAdd, "To set", onAddToSet)

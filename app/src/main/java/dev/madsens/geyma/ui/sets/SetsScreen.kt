@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -37,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -144,6 +146,7 @@ private fun SetDetail(app: GeymaApp, set: WorkingSet, onClose: () -> Unit, onVie
     val context = LocalContext.current
     val items by app.db.sets().items(set.id).collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    var packing by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Spacer(Modifier.height(6.dp))
@@ -158,6 +161,28 @@ private fun SetDetail(app: GeymaApp, set: WorkingSet, onClose: () -> Unit, onVie
                     color = t.inkFaint,
                     fontSize = 12.sp,
                 )
+            }
+            if (items.isNotEmpty()) {
+                IconButton(
+                    enabled = !packing,
+                    onClick = {
+                        packing = true
+                        scope.launch {
+                            val paths = app.db.sets().itemPaths(set.id)
+                            app.repo.packSet(set.name, paths)
+                                .onSuccess { zipPath ->
+                                    Toast.makeText(context, "Packed to Geyma Packs", Toast.LENGTH_SHORT).show()
+                                    shareFiles(context, listOf(zipPath))
+                                }
+                                .onFailure {
+                                    Toast.makeText(context, it.message ?: "Could not pack this set", Toast.LENGTH_LONG).show()
+                                }
+                            packing = false
+                        }
+                    },
+                ) {
+                    Icon(Icons.Filled.Inventory2, "Pack for offline", tint = if (packing) t.inkFaint else t.accent)
+                }
             }
             val shareableCount = items.count { File(it.path).isFile }
             if (shareableCount > 0) {

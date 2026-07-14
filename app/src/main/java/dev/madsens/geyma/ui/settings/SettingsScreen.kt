@@ -30,9 +30,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -40,7 +42,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +81,10 @@ fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
     val scope = rememberCoroutineScope()
     val prefs = app.prefs
     val trashEntries by app.db.trash().all().collectAsState(initial = emptyList())
+    val ocrCount by app.db.ocr().countFlow().collectAsState(initial = 0)
+    var ocrScanning by remember { mutableStateOf(false) }
+    var ocrDone by remember { mutableIntStateOf(0) }
+    var ocrTotal by remember { mutableIntStateOf(0) }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -85,7 +95,10 @@ fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                     context.contentResolver.openInputStream(uri)?.use { app.continuity.import(it) }
                 }.onSuccess { summary ->
                     val msg = summary?.let {
-                        "Merged ${it.events} events, ${it.stars} stars, ${it.sets} sets"
+                        buildString {
+                            append("Merged ${it.events} events, ${it.stars} stars, ${it.sets} sets")
+                            if (it.notes > 0 || it.seals > 0) append(", ${it.notes} notes, ${it.seals} seals")
+                        }
                     } ?: "Could not read that file"
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }.onFailure {
@@ -261,6 +274,75 @@ fun SettingsScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                         Spacer(Modifier.width(4.dp))
                     }
                     Icon(Icons.AutoMirrored.Filled.NavigateNext, null, tint = t.inkFaint, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
+        item { SectionHeader("Image text search") }
+        item {
+            GeymaCard(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.ImageSearch, null, tint = t.accent, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Find words inside your images", color = t.ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Geyma reads the text in your screenshots and photos — entirely on this " +
+                        "device, nothing leaves it — so you can search a receipt by its total or a " +
+                        "screenshot by a word in it. Matches show up under Find.",
+                    color = t.inkFaint,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "$ocrCount image${if (ocrCount == 1) "" else "s"} indexed",
+                    color = t.inkSoft,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                if (ocrScanning) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = t.accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            if (ocrTotal > 0) "Reading images… $ocrDone / $ocrTotal" else "Looking for images…",
+                            color = t.inkSoft,
+                            fontSize = 13.sp,
+                        )
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(geymaShape(0.7f))
+                            .border(BorderStroke(1.dp, t.border), geymaShape(0.7f))
+                            .clickable {
+                                ocrScanning = true
+                                ocrDone = 0
+                                ocrTotal = 0
+                                scope.launch {
+                                    val roots = dev.madsens.geyma.files.StorageRoots.watchedFolders()
+                                    val indexed = runCatching {
+                                        app.ocrIndexer.indexRoots(roots) { p ->
+                                            ocrDone = p.done
+                                            ocrTotal = p.total
+                                        }
+                                    }.getOrElse { 0 }
+                                    ocrScanning = false
+                                    Toast.makeText(
+                                        context,
+                                        "Indexed $indexed new image${if (indexed == 1) "" else "s"}",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    ) {
+                        Icon(Icons.Filled.ImageSearch, null, tint = t.accent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (ocrCount > 0) "Rescan images" else "Scan images now", color = t.ink, fontSize = 13.sp)
+                    }
                 }
             }
         }

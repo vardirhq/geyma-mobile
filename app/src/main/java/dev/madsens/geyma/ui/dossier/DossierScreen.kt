@@ -1,6 +1,8 @@
 package dev.madsens.geyma.ui.dossier
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,9 +17,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -31,6 +40,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +52,9 @@ import androidx.compose.ui.unit.sp
 import dev.madsens.geyma.GeymaApp
 import dev.madsens.geyma.data.EventActions
 import dev.madsens.geyma.data.FileEvent
+import dev.madsens.geyma.data.Note
 import dev.madsens.geyma.data.Revisit
+import dev.madsens.geyma.insights.Dossier
 import dev.madsens.geyma.insights.DossierSummary
 import dev.madsens.geyma.insights.RevisitWhen
 import dev.madsens.geyma.files.FileFacts
@@ -74,6 +87,8 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
     var facts by remember(path) { mutableStateOf<FileFacts?>(null) }
     var events by remember(path) { mutableStateOf<List<FileEvent>>(emptyList()) }
     var revisit by remember(path) { mutableStateOf<Revisit?>(null) }
+    var note by remember(path) { mutableStateOf<Note?>(null) }
+    var sealed by remember(path) { mutableStateOf(false) }
     var reloads by remember(path) { mutableStateOf(0) }
 
     LaunchedEffect(path, reloads) {
@@ -81,6 +96,8 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
         facts = app.repo.fileFacts(path)
         events = app.repo.historyFor(path)
         revisit = app.repo.revisitFor(path)
+        note = app.repo.noteFor(path)
+        sealed = app.repo.isSealed(path)
     }
 
     val kind = remember(path) { FileKind.ofName(PathUtils.nameOf(path), File(path).isDirectory) }
@@ -109,6 +126,18 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text("Dossier", color = t.inkFaint, fontSize = 13.sp)
+            }
+            IconButton(onClick = {
+                scope.launch {
+                    app.repo.setSealed(path, !sealed)
+                    reloads++
+                }
+            }) {
+                Icon(
+                    if (sealed) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    if (sealed) "Unseal" else "Seal",
+                    tint = if (sealed) t.accent else t.inkSoft,
+                )
             }
             summary?.let { s ->
                 IconButton(onClick = {
@@ -154,6 +183,29 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
                 }
             }
 
+            if (sealed) {
+                item { SealedBanner() }
+            }
+
+            item { SectionHeader("Note") }
+            item {
+                NotesCard(
+                    note = note,
+                    onSave = { text ->
+                        scope.launch {
+                            app.repo.setNote(path, text)
+                            reloads++
+                        }
+                    },
+                    onClear = {
+                        scope.launch {
+                            app.repo.clearNote(path)
+                            reloads++
+                        }
+                    },
+                )
+            }
+
             item { RevisitCard(revisit, onSchedule = { whenChoice ->
                 scope.launch {
                     app.repo.scheduleRevisit(path, System.currentTimeMillis() + whenChoice.deltaMs)
@@ -181,18 +233,21 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
 private fun ProvenanceCard(s: DossierSummary) {
     val t = LocalTheme.current
     GeymaCard(modifier = Modifier.fillMaxWidth()) {
-        val origin = when (s.originAction) {
-            EventActions.ARRIVED -> "Arrived" + (s.originDetail?.let { " $it" } ?: "")
-            EventActions.CREATED -> "Created in Geyma"
-            else -> null
+        // The headline answer no plain file manager offers: why is this here?
+        val why = remember(s) { Dossier.whyHere(s) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.HelpOutline, null, tint = t.accent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Why is this here?", color = t.inkFaint, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
-        if (origin != null && s.bornMs != null) {
-            StatLine("Origin", "$origin · ${timeAgo(s.bornMs)}")
-        } else if (s.firstSeenMs != null) {
-            StatLine("First seen", timeAgo(s.firstSeenMs))
-        } else {
-            StatLine("Origin", "Before Geyma was watching")
-        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            why.headline + (why.whenMs?.let { " · ${timeAgo(it)}" } ?: ""),
+            color = t.ink,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Spacer(Modifier.height(10.dp))
 
         if (s.lastOpenedMs != null) {
             StatLine("Last opened", timeAgo(s.lastOpenedMs))
@@ -236,6 +291,122 @@ private fun StatLine(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
         Text(label, color = t.inkFaint, fontSize = 13.sp, modifier = Modifier.width(120.dp))
         Text(value, color = t.ink, fontSize = 13.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SealedBanner() {
+    val t = LocalTheme.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(geymaShape())
+            .background(t.accent.copy(alpha = 0.12f))
+            .padding(12.dp),
+    ) {
+        Icon(Icons.Filled.Lock, null, tint = t.accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Sealed — guarded against rename, move and delete until you unseal it.",
+            color = t.ink,
+            fontSize = 13.sp,
+        )
+    }
+}
+
+/**
+ * A sticky note pinned to this file. Shows the note when there is one, an
+ * invitation when there isn't, and an inline editor either way — the whole
+ * "leave a memory for a file" affordance in one card.
+ */
+@Composable
+private fun NotesCard(note: Note?, onSave: (String) -> Unit, onClear: () -> Unit) {
+    val t = LocalTheme.current
+    var editing by remember(note) { mutableStateOf(false) }
+    var draft by remember(note, editing) { mutableStateOf(note?.text ?: "") }
+
+    GeymaCard(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.EditNote, null, tint = t.accent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Pinned note", color = t.ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Spacer(Modifier.weight(1f))
+            note?.let { Text(timeAgo(it.updatedMs), color = t.inkFaint, fontSize = 11.sp) }
+        }
+        Spacer(Modifier.height(8.dp))
+        if (editing) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(geymaShape(0.6f))
+                    .border(BorderStroke(1.dp, t.border), geymaShape(0.6f))
+                    .padding(10.dp),
+            ) {
+                BasicTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    textStyle = TextStyle(color = t.ink, fontSize = 14.sp),
+                    cursorBrush = SolidColor(t.accent),
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { inner ->
+                        Box {
+                            if (draft.isEmpty()) {
+                                Text("Leave a note for future you…", color = t.inkFaint, fontSize = 14.sp)
+                            }
+                            inner()
+                        }
+                    },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NoteAction("Save", Icons.Filled.Check, filled = true) {
+                    onSave(draft)
+                    editing = false
+                }
+                NoteAction("Cancel", Icons.Filled.Close, filled = false) {
+                    draft = note?.text ?: ""
+                    editing = false
+                }
+                if (note != null) {
+                    NoteAction("Remove", Icons.Filled.Close, filled = false) {
+                        onClear()
+                        editing = false
+                    }
+                }
+            }
+        } else if (note != null) {
+            Text(note.text, color = t.ink, fontSize = 14.sp)
+            Spacer(Modifier.height(8.dp))
+            NoteAction("Edit note", Icons.Filled.EditNote, filled = false) { editing = true }
+        } else {
+            Text("No note yet — pin a reminder to this file.", color = t.inkFaint, fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            NoteAction("Add a note", Icons.Filled.EditNote, filled = true) { editing = true }
+        }
+    }
+}
+
+@Composable
+private fun NoteAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    filled: Boolean,
+    onClick: () -> Unit,
+) {
+    val t = LocalTheme.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(geymaShape(0.5f))
+            .background(if (filled) t.accent.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Icon(icon, null, tint = t.accent, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = t.accent, fontSize = 13.sp)
     }
 }
 

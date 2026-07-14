@@ -31,7 +31,35 @@ data class DossierSummary(
     val hasProvenance: Boolean get() = originAction != null || firstSeenMs != null
 }
 
+/**
+ * A one-line answer to "why is this here?" — the origin story a plain file
+ * manager can never tell. [headline] is the plain-language clause; [whenMs] is
+ * the moment it happened (for a relative-time suffix), null when unknown.
+ */
+data class Provenance(val headline: String, val whenMs: Long?)
+
 object Dossier {
+
+    /**
+     * Distil a file's origin into a single "why is this here?" line, purely from
+     * what the journal remembers — a download that landed in a watched folder, a
+     * share from another app, an extraction, an in-app creation, or (failing all
+     * that) that it simply predates Geyma's watch. Pure, so it is unit-tested.
+     */
+    fun whyHere(s: DossierSummary): Provenance = when {
+        s.originAction == EventActions.ARRIVED -> {
+            val where = s.originDetail?.takeIf { it.isNotBlank() }?.let { " $it" } ?: " from outside Geyma"
+            Provenance("Arrived$where", s.bornMs ?: s.firstSeenMs)
+        }
+        s.originAction == EventActions.CREATED && s.originDetail?.startsWith("extracted") == true ->
+            Provenance("Created here · ${s.originDetail}", s.bornMs)
+        s.originAction == EventActions.CREATED ->
+            Provenance("Created inside Geyma", s.bornMs)
+        s.firstSeenMs != null ->
+            Provenance("Geyma first noticed it here", s.firstSeenMs)
+        else ->
+            Provenance("Here before Geyma started remembering", null)
+    }
 
     /**
      * Summarize the file at [path] from its [events] (as returned by the

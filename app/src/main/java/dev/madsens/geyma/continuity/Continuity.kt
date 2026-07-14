@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Build
 import dev.madsens.geyma.data.FileEvent
 import dev.madsens.geyma.data.GeymaDb
+import dev.madsens.geyma.data.Note
+import dev.madsens.geyma.data.Seal
 import dev.madsens.geyma.data.SetItem
 import dev.madsens.geyma.data.Star
 import dev.madsens.geyma.data.WorkingSet
@@ -27,13 +29,22 @@ import java.util.Locale
  */
 class Continuity(private val context: Context, private val db: GeymaDb) {
 
-    data class Summary(val events: Int, val stars: Int, val sets: Int, val items: Int)
+    data class Summary(
+        val events: Int,
+        val stars: Int,
+        val sets: Int,
+        val items: Int,
+        val notes: Int,
+        val seals: Int,
+    )
 
     /** Writes a bundle into `.geyma/exports` and returns the file. */
     suspend fun export(): File = withContext(Dispatchers.IO) {
         val root = JSONObject()
         root.put("format", "geyma-bundle")
-        root.put("version", 1)
+        // v2 adds notes + seals. Older importers use optJSONArray, so a v2 bundle
+        // opened by a v1 app simply ignores the new sections — forward-compatible.
+        root.put("version", 2)
         root.put("exportedAtMs", System.currentTimeMillis())
         root.put("device", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
         root.put("storageRoot", StorageRoots.primaryPath())
@@ -89,6 +100,28 @@ class Continuity(private val context: Context, private val db: GeymaDb) {
                 }
             },
         )
+        root.put(
+            "notes",
+            JSONArray().apply {
+                for (n in db.notes().snapshot()) {
+                    put(
+                        JSONObject()
+                            .put("path", n.path)
+                            .put("text", n.text)
+                            .put("updatedMs", n.updatedMs)
+                            .put("createdMs", n.createdMs),
+                    )
+                }
+            },
+        )
+        root.put(
+            "seals",
+            JSONArray().apply {
+                for (s in db.seals().snapshot()) {
+                    put(JSONObject().put("path", s.path).put("whenMs", s.whenMs))
+                }
+            },
+        )
 
         val dir = File(StorageRoots.primaryPath(), ".geyma/exports").apply { mkdirs() }
         val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
@@ -123,6 +156,8 @@ class Continuity(private val context: Context, private val db: GeymaDb) {
         var stars = 0
         var sets = 0
         var items = 0
+        var notes = 0
+        var seals = 0
 
         root.optJSONArray("stars")?.let { arr ->
             for (i in 0 until arr.length()) {
@@ -162,6 +197,31 @@ class Continuity(private val context: Context, private val db: GeymaDb) {
                 }
             }
         }
+        root.optJSONArray("notes")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val path = rebase(o.getString("path")) ?: continue
+                val now = System.currentTimeMillis()
+                db.notes().set(
+                    Note(
+                        path = path,
+                        text = o.getString("text"),
+                        updatedMs = o.optLong("updatedMs", now),
+                        createdMs = o.optLong("createdMs", now),
+                    ),
+                )
+                notes++
+            }
+        }
+        root.optJSONArray("seals")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                rebase(o.getString("path"))?.let {
+                    db.seals().add(Seal(path = it, whenMs = o.optLong("whenMs", System.currentTimeMillis())))
+                    seals++
+                }
+            }
+        }
         root.optJSONArray("events")?.let { arr ->
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -180,7 +240,7 @@ class Continuity(private val context: Context, private val db: GeymaDb) {
             }
         }
 
-        Summary(events = events, stars = stars, sets = sets, items = items)
+        Summary(events = events, stars = stars, sets = sets, items = items, notes = notes, seals = seals)
     }
 
     private companion object {

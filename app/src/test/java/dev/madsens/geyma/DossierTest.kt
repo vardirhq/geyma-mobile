@@ -72,4 +72,49 @@ class DossierTest {
         assertTrue(s.hasProvenance)
         assertEquals(0, s.eventCount)
     }
+
+    @Test
+    fun whyHereReadsAnArrivalWithItsFolder() {
+        val s = Dossier.summarize(
+            path = path,
+            events = history,
+            starred = false,
+            setNames = emptyList(),
+            seen = SeenFile(path = path, firstSeenMs = 100, lastOpenedMs = 500),
+            exists = true,
+        )
+        val why = Dossier.whyHere(s)
+        assertEquals("Arrived in Downloads", why.headline)
+        assertEquals(100L, why.whenMs)
+    }
+
+    @Test
+    fun whyHereNamesAnExtraction() {
+        val s = Dossier.summarize(
+            path = "/s/Documents/photos",
+            events = listOf(ev(EventActions.CREATED, 200, detail = "extracted from trip.zip", p = "/s/Documents/photos")),
+            starred = false,
+            setNames = emptyList(),
+            seen = null,
+            exists = true,
+        )
+        val why = Dossier.whyHere(s)
+        assertEquals("Created here · extracted from trip.zip", why.headline)
+        assertEquals(200L, why.whenMs)
+    }
+
+    @Test
+    fun whyHereFallsBackWhenNothingIsRemembered() {
+        val s = Dossier.summarize(
+            path = path,
+            events = emptyList(),
+            starred = false,
+            setNames = emptyList(),
+            seen = null,
+            exists = true,
+        )
+        val why = Dossier.whyHere(s)
+        assertEquals("Here before Geyma started remembering", why.headline)
+        assertEquals(null, why.whenMs)
+    }
 }

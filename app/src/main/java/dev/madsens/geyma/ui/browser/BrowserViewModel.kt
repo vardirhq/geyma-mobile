@@ -195,6 +195,13 @@ class BrowserViewModel(private val repo: FsRepository, private val prefs: Prefs)
         }
     }
 
+    fun setSealed(path: String, sealed: Boolean) {
+        viewModelScope.launch {
+            repo.setSealed(path, sealed)
+            refresh()
+        }
+    }
+
     fun starSelection(starred: Boolean) {
         val sel = _state.value.selection.toList()
         viewModelScope.launch {

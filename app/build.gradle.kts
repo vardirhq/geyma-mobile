@@ -17,8 +17,8 @@ android {
         // Settings > About lets on-device testing confirm the running build.
         // versionCode is the definitive build discriminator; versionName is the
         // human label.
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.3.0"
     }
 
     buildTypes {
@@ -67,6 +67,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)
     implementation(libs.coil.svg)
+    // On-device text recognition (bundled Latin model) — powers OCR search over
+    // images. Runs entirely on the device; no network, true to the on-device promise.
+    implementation(libs.mlkit.text.recognition)
 
     testImplementation(libs.junit)
 }

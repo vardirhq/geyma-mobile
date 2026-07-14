@@ -11,6 +11,7 @@ import dev.madsens.geyma.continuity.Continuity
 import dev.madsens.geyma.data.GeymaDb
 import dev.madsens.geyma.data.Prefs
 import dev.madsens.geyma.files.FsRepository
+import dev.madsens.geyma.files.OcrIndexer
 import dev.madsens.geyma.files.StorageWatcher
 import dev.madsens.geyma.insights.DuplicateGroup
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,7 @@ class GeymaApp : Application(), ImageLoaderFactory {
 
     val watcher: StorageWatcher by lazy { StorageWatcher(repo, prefs, appScope) }
     val continuity: Continuity by lazy { Continuity(this, db) }
+    val ocrIndexer: OcrIndexer by lazy { OcrIndexer(this, db) }
 
     /**
      * The last Echoes scan, kept for the life of the process so stepping into a
