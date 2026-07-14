@@ -253,6 +253,43 @@ interface NoteDao {
 }
 
 @Dao
+interface OcrDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun set(row: OcrText)
+
+    @Query("SELECT * FROM ocr_index WHERE path = :path")
+    suspend fun byPath(path: String): OcrText?
+
+    @Query("SELECT COUNT(*) FROM ocr_index")
+    suspend fun count(): Int
+
+    @Query("SELECT COUNT(*) FROM ocr_index")
+    fun countFlow(): Flow<Int>
+
+    /** Images whose recognized text contains [q]; newest-indexed first. */
+    @Query(
+        "SELECT * FROM ocr_index WHERE text LIKE '%' || :q || '%' ESCAPE '\\' " +
+            "ORDER BY indexedMs DESC LIMIT 100",
+    )
+    suspend fun search(q: String): List<OcrText>
+
+    @Query("DELETE FROM ocr_index WHERE path = :path")
+    suspend fun clear(path: String)
+
+    @Query("DELETE FROM ocr_index")
+    suspend fun clearAll()
+
+    @Query(
+        "UPDATE OR REPLACE ocr_index SET path = :newBase || substr(path, length(:oldBase) + 1) " +
+            "WHERE path = :oldBase OR path LIKE :oldBaseLike || '/%' ESCAPE '\\'",
+    )
+    suspend fun rebasePaths(oldBase: String, oldBaseLike: String, newBase: String)
+
+    @Query("DELETE FROM ocr_index WHERE path = :path OR path LIKE :pathLike || '/%' ESCAPE '\\'")
+    suspend fun removeTree(path: String, pathLike: String)
+}
+
+@Dao
 interface SealDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun add(seal: Seal)

@@ -127,6 +127,21 @@ data class Note(
 )
 
 /**
+ * Text recognized inside an image, so it can be *found by its contents* — the
+ * receipt you search by its amount, the screenshot you find by a word in it.
+ * Keyed by path; [modifiedMs]/[size] are the file's stamps at index time so a
+ * changed image is re-recognized rather than trusted stale. On-device only.
+ */
+@Entity(tableName = "ocr_index")
+data class OcrText(
+    @PrimaryKey val path: String,
+    val text: String,
+    val modifiedMs: Long,
+    val size: Long,
+    val indexedMs: Long = System.currentTimeMillis(),
+)
+
+/**
  * A seal on a file or folder — the *guard* pillar made literal. A sealed entry
  * cannot be renamed, moved, trashed or deleted through Geyma until it is
  * explicitly unsealed, so a precious file survives a fat-fingered swipe. Like

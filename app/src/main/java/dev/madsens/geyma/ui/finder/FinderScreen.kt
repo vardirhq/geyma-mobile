@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,12 +37,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.madsens.geyma.GeymaApp
+import dev.madsens.geyma.files.OcrHit
 import dev.madsens.geyma.files.PathUtils
 import dev.madsens.geyma.files.SearchHit
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.ui.components.EmptyState
 import dev.madsens.geyma.ui.components.EventGlyph
 import dev.madsens.geyma.ui.components.EventUi
+import dev.madsens.geyma.ui.components.SectionHeader
 import dev.madsens.geyma.ui.components.geymaShape
 import dev.madsens.geyma.ui.components.timeAgo
 import kotlinx.coroutines.delay
@@ -57,13 +60,16 @@ fun FinderScreen(app: GeymaApp, onBack: () -> Unit, onView: (String) -> Unit, on
     val t = LocalTheme.current
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<SearchHit>>(emptyList()) }
+    var textHits by remember { mutableStateOf<List<OcrHit>>(emptyList()) }
 
     LaunchedEffect(query) {
         if (query.isBlank()) {
             hits = emptyList()
+            textHits = emptyList()
         } else {
             delay(200) // debounce keystrokes
             hits = app.repo.searchJournal(query)
+            textHits = app.repo.searchImageText(query)
         }
     }
 
@@ -91,25 +97,67 @@ fun FinderScreen(app: GeymaApp, onBack: () -> Unit, onView: (String) -> Unit, on
         Spacer(Modifier.height(8.dp))
 
         when {
-            query.isBlank() -> EmptyState("Type a name. Geyma looks through moved, renamed and trashed files too.")
-            hits.isEmpty() -> EmptyState("Nothing in the journal matches “$query”.")
+            query.isBlank() -> EmptyState("Type a word. Geyma looks through moved, renamed and trashed files — and the text inside your images.")
+            hits.isEmpty() && textHits.isEmpty() -> EmptyState("Nothing Geyma remembers matches “$query”.")
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(hits, key = { it.path + it.lastWhenMs }) { hit ->
-                    HitRow(
-                        hit = hit,
-                        onClick = {
-                            when {
-                                hit.exists && File(hit.path).isDirectory -> onBrowseTo(hit.path)
-                                hit.exists -> onView(hit.path)
-                                else -> PathUtils.parentOf(hit.path)?.let { parent ->
-                                    if (File(parent).isDirectory) onBrowseTo(parent)
+                if (hits.isNotEmpty()) {
+                    item { SectionHeader("In the journal") }
+                    items(hits, key = { "j:" + it.path + it.lastWhenMs }) { hit ->
+                        HitRow(
+                            hit = hit,
+                            onClick = {
+                                when {
+                                    hit.exists && File(hit.path).isDirectory -> onBrowseTo(hit.path)
+                                    hit.exists -> onView(hit.path)
+                                    else -> PathUtils.parentOf(hit.path)?.let { parent ->
+                                        if (File(parent).isDirectory) onBrowseTo(parent)
+                                    }
                                 }
-                            }
-                        },
-                    )
+                            },
+                        )
+                    }
+                }
+                if (textHits.isNotEmpty()) {
+                    item { SectionHeader("Found inside images") }
+                    items(textHits, key = { "ocr:" + it.path }) { hit ->
+                        OcrHitRow(hit = hit, onClick = { onView(hit.path) })
+                    }
                 }
                 item { Spacer(Modifier.height(16.dp)) }
             }
+        }
+    }
+}
+
+@Composable
+private fun OcrHitRow(hit: OcrHit, onClick: () -> Unit) {
+    val t = LocalTheme.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(geymaShape(0.6f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+    ) {
+        Icon(Icons.Filled.Image, null, tint = t.accent, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                hit.name,
+                color = t.ink,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                hit.snippet,
+                color = t.inkFaint,
+                fontSize = 11.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

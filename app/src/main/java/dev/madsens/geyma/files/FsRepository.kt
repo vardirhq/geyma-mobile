@@ -89,6 +89,13 @@ enum class ScanPhase { WALKING, COMPARING }
 /** Live progress of a duplicate scan: [done] of [total] in the current [phase]. */
 data class ScanProgress(val phase: ScanPhase, val done: Int, val total: Int)
 
+/** One image whose recognized text matched a search, with a match snippet. */
+data class OcrHit(
+    val name: String,
+    val path: String,
+    val snippet: String,
+)
+
 /** A neglected arrival surfaced on the Sweep screen. */
 data class SweepItem(
     val name: String,
@@ -114,6 +121,7 @@ class FsRepository(private val db: GeymaDb) {
     private val revisits get() = db.revisits()
     private val notes get() = db.notes()
     private val seals get() = db.seals()
+    private val ocr get() = db.ocr()
 
     val trashDir: File = File(StorageRoots.primaryPath(), ".geyma/trash")
 
@@ -422,6 +430,31 @@ class FsRepository(private val db: GeymaDb) {
         byFile.values.sortedByDescending { it.lastWhenMs }
     }
 
+    /** How many images currently have recognized text banked for search. */
+    suspend fun ocrIndexedCount(): Int = ocr.count()
+
+    /**
+     * Find images whose recognized text contains [query] — "find my file by
+     * what's written inside it." Each hit carries a one-line snippet of the
+     * match. Rows whose image is gone are dropped (and swept from the index).
+     */
+    suspend fun searchImageText(query: String): List<OcrHit> = withContext(Dispatchers.IO) {
+        val q = query.trim()
+        if (q.isBlank()) return@withContext emptyList()
+        ocr.search(PathUtils.escapeLike(q)).mapNotNull { row ->
+            val f = File(row.path)
+            if (!f.exists()) {
+                ocr.clear(row.path)
+                return@mapNotNull null
+            }
+            OcrHit(
+                path = row.path,
+                name = PathUtils.nameOf(row.path),
+                snippet = Ocr.snippet(row.text, q),
+            )
+        }
+    }
+
     /** Note that the user opened a file, both in the journal and the seen-ledger. */
     suspend fun recordOpen(path: String) = withContext(Dispatchers.IO) {
         seen.markOpened(path, System.currentTimeMillis())
@@ -715,6 +748,7 @@ class FsRepository(private val db: GeymaDb) {
                 revisits.removeTree(path, pathLike)
                 notes.removeTree(path, pathLike)
                 seals.removeTree(path, pathLike)
+                ocr.removeTree(path, pathLike)
                 trashed++
             }
             trashed
@@ -799,6 +833,7 @@ class FsRepository(private val db: GeymaDb) {
         revisits.rebasePaths(oldBase, oldBaseLike, newBase)
         notes.rebasePaths(oldBase, oldBaseLike, newBase)
         seals.rebasePaths(oldBase, oldBaseLike, newBase)
+        ocr.rebasePaths(oldBase, oldBaseLike, newBase)
     }
 
     private suspend fun log(

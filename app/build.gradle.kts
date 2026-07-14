@@ -67,6 +67,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)
     implementation(libs.coil.svg)
+    // On-device text recognition (bundled Latin model) — powers OCR search over
+    // images. Runs entirely on the device; no network, true to the on-device promise.
+    implementation(libs.mlkit.text.recognition)
 
     testImplementation(libs.junit)
 }

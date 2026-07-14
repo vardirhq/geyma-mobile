@@ -11,8 +11,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         FileEvent::class, Star::class, TrashEntry::class, WorkingSet::class,
         SetItem::class, SeenFile::class, Revisit::class, Note::class, Seal::class,
+        OcrText::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class GeymaDb : RoomDatabase() {
@@ -24,6 +25,7 @@ abstract class GeymaDb : RoomDatabase() {
     abstract fun revisits(): RevisitDao
     abstract fun notes(): NoteDao
     abstract fun seals(): SealDao
+    abstract fun ocr(): OcrDao
 
     companion object {
         /**
@@ -75,12 +77,27 @@ abstract class GeymaDb : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 → v5 adds the `ocr_index` table (text recognized inside images, for
+         * content search). Additive — nothing Geyma remembers is disturbed.
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `ocr_index` (" +
+                        "`path` TEXT NOT NULL, `text` TEXT NOT NULL, " +
+                        "`modifiedMs` INTEGER NOT NULL, `size` INTEGER NOT NULL, " +
+                        "`indexedMs` INTEGER NOT NULL, PRIMARY KEY(`path`))",
+                )
+            }
+        }
+
         @Volatile
         private var instance: GeymaDb? = null
 
         fun get(context: Context): GeymaDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, GeymaDb::class.java, "geyma.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 .also { instance = it }
         }
