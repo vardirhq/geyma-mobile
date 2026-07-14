@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -124,6 +125,7 @@ fun BrowserScreen(
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var searchOpen by remember { mutableStateOf(false) }
+    var showInsight by remember(state.dir) { mutableStateOf(false) }
     var sheetEntry by remember { mutableStateOf<Entry?>(null) }
     var renameTarget by remember { mutableStateOf<Entry?>(null) }
     var newFolderOpen by remember { mutableStateOf(false) }
@@ -167,12 +169,18 @@ fun BrowserScreen(
             vm = vm,
             state = state,
             searchOpen = searchOpen,
+            insightOn = showInsight,
+            onToggleInsight = { showInsight = !showInsight },
             onToggleSearch = {
                 searchOpen = !searchOpen
                 if (!searchOpen) vm.setQuery("")
             },
         )
         Breadcrumbs(state) { vm.open(it) }
+
+        if (showInsight && state.entries.isNotEmpty()) {
+            FolderDigestBanner(state.entries)
+        }
 
         state.error?.let { err ->
             Row(
@@ -329,6 +337,8 @@ private fun BrowserTopBar(
     vm: BrowserViewModel,
     state: BrowserState,
     searchOpen: Boolean,
+    insightOn: Boolean,
+    onToggleInsight: () -> Unit,
     onToggleSearch: () -> Unit,
 ) {
     val t = LocalTheme.current
@@ -345,6 +355,9 @@ private fun BrowserTopBar(
                 fontSize = 20.sp,
                 modifier = Modifier.padding(start = 8.dp).weight(1f),
             )
+            IconButton(onClick = onToggleInsight) {
+                Icon(Icons.Filled.AutoAwesome, "Explain this folder", tint = if (insightOn) t.accent else t.inkSoft)
+            }
             IconButton(onClick = onToggleSearch) {
                 Icon(Icons.Filled.Search, "Search", tint = if (searchOpen) t.accent else t.inkSoft)
             }
@@ -409,6 +422,29 @@ private fun BrowserTopBar(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
+    }
+}
+
+/**
+ * The "explain this folder" one-liner — a plain-language read of what the
+ * current folder holds, composed purely from the entries already on screen.
+ */
+@Composable
+private fun FolderDigestBanner(entries: List<Entry>) {
+    val t = LocalTheme.current
+    val digest = remember(entries) { dev.madsens.geyma.files.FolderInsight.describe(entries) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(geymaShape())
+            .background(t.accent.copy(alpha = 0.10f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.AutoAwesome, null, tint = t.accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(digest.sentence, color = t.ink, fontSize = 13.sp)
     }
 }
 
