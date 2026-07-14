@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -53,6 +54,7 @@ import dev.madsens.geyma.data.EventActions
 import dev.madsens.geyma.data.FileEvent
 import dev.madsens.geyma.data.Note
 import dev.madsens.geyma.data.Revisit
+import dev.madsens.geyma.insights.Dossier
 import dev.madsens.geyma.insights.DossierSummary
 import dev.madsens.geyma.insights.RevisitWhen
 import dev.madsens.geyma.files.FileFacts
@@ -231,18 +233,21 @@ fun DossierScreen(app: GeymaApp, path: String, onBack: () -> Unit, onBrowse: (St
 private fun ProvenanceCard(s: DossierSummary) {
     val t = LocalTheme.current
     GeymaCard(modifier = Modifier.fillMaxWidth()) {
-        val origin = when (s.originAction) {
-            EventActions.ARRIVED -> "Arrived" + (s.originDetail?.let { " $it" } ?: "")
-            EventActions.CREATED -> "Created in Geyma"
-            else -> null
+        // The headline answer no plain file manager offers: why is this here?
+        val why = remember(s) { Dossier.whyHere(s) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.HelpOutline, null, tint = t.accent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Why is this here?", color = t.inkFaint, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
-        if (origin != null && s.bornMs != null) {
-            StatLine("Origin", "$origin · ${timeAgo(s.bornMs)}")
-        } else if (s.firstSeenMs != null) {
-            StatLine("First seen", timeAgo(s.firstSeenMs))
-        } else {
-            StatLine("Origin", "Before Geyma was watching")
-        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            why.headline + (why.whenMs?.let { " · ${timeAgo(it)}" } ?: ""),
+            color = t.ink,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Spacer(Modifier.height(10.dp))
 
         if (s.lastOpenedMs != null) {
             StatLine("Last opened", timeAgo(s.lastOpenedMs))
