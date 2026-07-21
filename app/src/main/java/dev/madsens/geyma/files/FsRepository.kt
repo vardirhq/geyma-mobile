@@ -96,7 +96,10 @@ data class OcrHit(
     val snippet: String,
 )
 
-/** A neglected arrival surfaced on the Sweep screen. */
+/** Which cleanup lane a never-opened arrival belongs in. */
+enum class SweepBucket { INBOX, SCREENSHOTS, AMBIENT_MEDIA, IGNORED }
+
+/** A never-opened arrival surfaced on the Sweep screen. */
 data class SweepItem(
     val name: String,
     val path: String,
@@ -104,6 +107,7 @@ data class SweepItem(
     val firstSeenMs: Long,
     val ageDays: Int,
     val kind: String,
+    val bucket: SweepBucket,
 )
 
 /**
@@ -473,12 +477,17 @@ class FsRepository(private val db: GeymaDb) {
     }
 
     /**
-     * Files that arrived from outside Geyma and were never opened through it,
-     * ranked by neglect (oldest, largest first). Powers the Sweep screen. Stale
-     * ledger rows whose file is gone are cleaned up as a side effect.
+     * Files that arrived from outside Geyma and still need a decision. Sweep is
+     * intentionally not a raw "never opened here" list: camera roll media is
+     * ambient phone activity, screenshots get their own cleanup lane, and files
+     * the user already protected are left alone.
      */
     suspend fun sweepCandidates(): List<SweepItem> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
+        val starredPaths = stars.allPaths().toHashSet()
+        val notedPaths = notes.allPaths().toHashSet()
+        val sealedPaths = seals.allPaths().toHashSet()
+        val setPaths = sets.allItemPaths().toHashSet()
         val out = ArrayList<SweepItem>()
         for (row in seen.neverOpened()) {
             val f = File(row.path)
@@ -486,6 +495,12 @@ class FsRepository(private val db: GeymaDb) {
                 seen.remove(row.path)
                 continue
             }
+            if (row.path in starredPaths || row.path in notedPaths || row.path in sealedPaths || row.path in setPaths) {
+                continue
+            }
+            val kind = FileKind.ofName(f.name, false)
+            val bucket = sweepBucketFor(row.path, kind)
+            if (bucket == SweepBucket.IGNORED || bucket == SweepBucket.AMBIENT_MEDIA) continue
             out.add(
                 SweepItem(
                     name = f.name,
@@ -493,12 +508,50 @@ class FsRepository(private val db: GeymaDb) {
                     size = f.length(),
                     firstSeenMs = row.firstSeenMs,
                     ageDays = ((now - row.firstSeenMs) / TimeUnit.DAYS.toMillis(1)).toInt(),
-                    kind = FileKind.ofName(f.name, false),
+                    kind = kind,
+                    bucket = bucket,
                 ),
             )
         }
-        // Most-neglected first: old files bubble up, ties broken by size.
+        // Most-decision-worthy first: old files bubble up, ties broken by size.
         out.sortedWith(compareByDescending<SweepItem> { it.firstSeenMs.let { s -> now - s } }.thenByDescending { it.size })
+    }
+
+    private fun sweepBucketFor(path: String, kind: String): SweepBucket {
+        val base = StorageRoots.primaryPath().trimEnd('/')
+        val relative = path.removePrefix(base).replace('\\', '/').lowercase(Locale.US)
+        val fileName = PathUtils.nameOf(path).lowercase(Locale.US)
+        val isMedia = kind == FileKind.IMAGE || kind == FileKind.VIDEO || kind == FileKind.AUDIO
+
+        if ("/screenshots/" in relative || relative.endsWith("/screenshots/$fileName") || fileName.startsWith("screenshot")) {
+            return SweepBucket.SCREENSHOTS
+        }
+
+        if (isMedia && (
+                relative.startsWith("/dcim/") ||
+                    relative.startsWith("/pictures/") ||
+                    relative.startsWith("/movies/") ||
+                    "/whatsapp images/" in relative ||
+                    "/whatsapp video/" in relative ||
+                    "/telegram images/" in relative ||
+                    "/telegram video/" in relative
+            )
+        ) {
+            return SweepBucket.AMBIENT_MEDIA
+        }
+
+        if (
+            relative.startsWith("/download/") ||
+                relative.startsWith("/downloads/") ||
+                relative.startsWith("/documents/") ||
+                "/whatsapp documents/" in relative ||
+                relative.startsWith("/bluetooth/") ||
+                relative.startsWith("/telegram/")
+        ) {
+            return SweepBucket.INBOX
+        }
+
+        return if (isMedia) SweepBucket.AMBIENT_MEDIA else SweepBucket.INBOX
     }
 
     /**
