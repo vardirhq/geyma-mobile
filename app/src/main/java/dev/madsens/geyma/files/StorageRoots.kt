@@ -66,9 +66,10 @@ object StorageRoots {
     }
 
     /**
-     * Folders Geyma watches for arrivals — where files land on a phone without
-     * anyone filing them: downloads, screenshots, camera, and messaging media.
-     * Only the ones that actually exist are returned.
+     * Folders Geyma watches for arrivals — places where loose files commonly
+     * need a decision. Camera roll media is deliberately excluded from the live
+     * arrival watch: photos are usually managed by gallery apps, while screenshots
+     * and inbox-like folders still feed Sweep.
      */
     fun watchedFolders(): List<String> {
         val base = primaryPath()
@@ -76,11 +77,8 @@ object StorageRoots {
             "$base/Download",
             "$base/Downloads",
             "$base/Documents",
-            "$base/Pictures",
             "$base/Pictures/Screenshots",
             "$base/DCIM/Screenshots",
-            "$base/DCIM/Camera",
-            "$base/Movies",
             "$base/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents",
             "$base/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images",
             "$base/bluetooth",
