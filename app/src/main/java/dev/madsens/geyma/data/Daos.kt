@@ -177,6 +177,9 @@ interface SetDao {
     @Query("SELECT path FROM set_items WHERE setId = :setId ORDER BY addedMs DESC")
     suspend fun itemPaths(setId: String): List<String>
 
+    @Query("SELECT path FROM set_items")
+    suspend fun allItemPaths(): List<String>
+
     @Query("SELECT COUNT(*) FROM set_items WHERE setId = :setId")
     fun itemCount(setId: String): Flow<Int>
 

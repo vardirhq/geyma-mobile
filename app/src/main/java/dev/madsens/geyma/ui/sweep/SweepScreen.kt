@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.madsens.geyma.GeymaApp
 import dev.madsens.geyma.files.PathUtils
+import dev.madsens.geyma.files.SweepBucket
 import dev.madsens.geyma.files.SweepItem
 import dev.madsens.geyma.theme.LocalTheme
 import dev.madsens.geyma.theme.itemColors
@@ -51,15 +52,16 @@ import dev.madsens.geyma.ui.components.kindIcon
 import kotlinx.coroutines.launch
 
 /**
- * Cleanup ranked by neglect, not size: files that arrived from outside Geyma and
- * were never opened. Because trash remembers origins, a sweep is fully
- * reversible — the reassurance no other cleaner can give.
+ * Cleanup ranked by decision-worthiness, not raw "never opened here" status.
+ * Inbox files and screenshots are separated so camera/media folders do not get
+ * treated like neglected downloads.
  */
 @Composable
 fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
     val t = LocalTheme.current
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<SweepItem>?>(null) }
+    var selectedBucket by remember { mutableStateOf(SweepBucket.INBOX) }
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var justSwept by remember { mutableStateOf(0) }
 
@@ -68,7 +70,8 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
     }
     androidx.compose.runtime.LaunchedEffect(Unit) { reload() }
 
-    val list = items
+    val allItems = items
+    val list = allItems?.filter { it.bucket == selectedBucket }
     val selectedSize = list.orEmpty().filter { it.path in selection }.sumOf { it.size }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -79,28 +82,40 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
             }
             Column(Modifier.weight(1f)) {
                 Text("Sweep", color = t.ink, fontWeight = FontWeight.Bold, fontSize = 24.sp)
-                Text("Forgotten files, oldest first", color = t.inkFaint, fontSize = 13.sp)
+                Text("Files waiting for a decision", color = t.inkFaint, fontSize = 13.sp)
             }
         }
         Spacer(Modifier.height(8.dp))
 
         when {
-            list == null -> EmptyState("Looking through what arrived…")
-            list.isEmpty() -> {
-                if (justSwept > 0) {
-                    SweptCard(justSwept, onOpenTrash)
-                } else {
-                    EmptyState("Nothing neglected. Everything that arrived has been opened or filed.")
-                }
-            }
+            allItems == null -> EmptyState("Looking through what arrived…")
             else -> {
+                val visibleItems = list.orEmpty()
+                SweepTabs(
+                    selected = selectedBucket,
+                    inboxCount = allItems.count { it.bucket == SweepBucket.INBOX },
+                    screenshotCount = allItems.count { it.bucket == SweepBucket.SCREENSHOTS },
+                    onSelect = {
+                        selectedBucket = it
+                        selection = emptySet()
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                if (visibleItems.isEmpty()) {
+                    if (justSwept > 0) {
+                        SweptCard(justSwept, onOpenTrash)
+                    } else {
+                        EmptyState(emptyCopy(selectedBucket))
+                    }
+                    return@Column
+                }
                 if (justSwept > 0) {
                     SweptCard(justSwept, onOpenTrash)
                     Spacer(Modifier.height(8.dp))
                 }
                 GeymaCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        "${list.size} file${if (list.size == 1) "" else "s"} arrived and were never opened in Geyma.",
+                        bucketIntro(selectedBucket, visibleItems.size),
                         color = t.ink,
                         fontSize = 13.sp,
                     )
@@ -122,19 +137,19 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text(
-                                    if (selection.size == list.size) "Clear all" else "Select all",
+                                    if (selection.size == visibleItems.size) "Clear all" else "Select all",
                                     color = t.accent,
                                     fontSize = 12.sp,
                                     modifier = Modifier
                                         .clip(geymaShape(0.5f))
                                         .clickable {
-                                            selection = if (selection.size == list.size) emptySet() else list.map { it.path }.toSet()
+                                            selection = if (selection.size == visibleItems.size) emptySet() else visibleItems.map { it.path }.toSet()
                                         }
                                         .padding(horizontal = 6.dp, vertical = 2.dp),
                                 )
                             }
                         }
-                        items(list, key = { it.path }) { item ->
+                        items(visibleItems, key = { it.path }) { item ->
                             SweepRow(
                                 item = item,
                                 selected = item.path in selection,
@@ -180,6 +195,65 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun SweepTabs(
+    selected: SweepBucket,
+    inboxCount: Int,
+    screenshotCount: Int,
+    onSelect: (SweepBucket) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        SweepTab(
+            label = "Inbox",
+            count = inboxCount,
+            active = selected == SweepBucket.INBOX,
+            onClick = { onSelect(SweepBucket.INBOX) },
+            modifier = Modifier.weight(1f),
+        )
+        SweepTab(
+            label = "Screenshots",
+            count = screenshotCount,
+            active = selected == SweepBucket.SCREENSHOTS,
+            onClick = { onSelect(SweepBucket.SCREENSHOTS) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun SweepTab(label: String, count: Int, active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val t = LocalTheme.current
+    val bg = if (active) t.accent else t.card
+    val fg = if (active) t.onAccent else t.ink
+    Box(
+        modifier
+            .clip(geymaShape(0.7f))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("$label · $count", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+    }
+}
+
+private fun bucketIntro(bucket: SweepBucket, count: Int): String {
+    val files = "file" + if (count == 1) "" else "s"
+    return when (bucket) {
+        SweepBucket.INBOX -> "$count $files look like arrivals waiting to be filed."
+        SweepBucket.SCREENSHOTS -> if (count == 1) "1 screenshot may be worth cleaning up." else "$count screenshots may be worth cleaning up."
+        SweepBucket.AMBIENT_MEDIA,
+        SweepBucket.IGNORED -> "$count $files are hidden from Sweep."
+    }
+}
+
+private fun emptyCopy(bucket: SweepBucket): String = when (bucket) {
+    SweepBucket.INBOX -> "No loose inbox files. Downloads and documents look handled."
+    SweepBucket.SCREENSHOTS -> "No screenshots waiting for cleanup."
+    SweepBucket.AMBIENT_MEDIA,
+    SweepBucket.IGNORED -> "Nothing to sweep here."
 }
 
 @Composable
