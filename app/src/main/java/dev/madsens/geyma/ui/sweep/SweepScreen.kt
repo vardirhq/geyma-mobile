@@ -90,6 +90,7 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
         when {
             allItems == null -> EmptyState("Looking through what arrived…")
             else -> {
+                val visibleItems = list.orEmpty()
                 SweepTabs(
                     selected = selectedBucket,
                     inboxCount = allItems.count { it.bucket == SweepBucket.INBOX },
@@ -100,7 +101,7 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                     },
                 )
                 Spacer(Modifier.height(8.dp))
-                if (list.orEmpty().isEmpty()) {
+                if (visibleItems.isEmpty()) {
                     if (justSwept > 0) {
                         SweptCard(justSwept, onOpenTrash)
                     } else {
@@ -114,7 +115,7 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                 }
                 GeymaCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        bucketIntro(selectedBucket, list.size),
+                        bucketIntro(selectedBucket, visibleItems.size),
                         color = t.ink,
                         fontSize = 13.sp,
                     )
@@ -136,19 +137,19 @@ fun SweepScreen(app: GeymaApp, onBack: () -> Unit, onOpenTrash: () -> Unit) {
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text(
-                                    if (selection.size == list.size) "Clear all" else "Select all",
+                                    if (selection.size == visibleItems.size) "Clear all" else "Select all",
                                     color = t.accent,
                                     fontSize = 12.sp,
                                     modifier = Modifier
                                         .clip(geymaShape(0.5f))
                                         .clickable {
-                                            selection = if (selection.size == list.size) emptySet() else list.map { it.path }.toSet()
+                                            selection = if (selection.size == visibleItems.size) emptySet() else visibleItems.map { it.path }.toSet()
                                         }
                                         .padding(horizontal = 6.dp, vertical = 2.dp),
                                 )
                             }
                         }
-                        items(list, key = { it.path }) { item ->
+                        items(visibleItems, key = { it.path }) { item ->
                             SweepRow(
                                 item = item,
                                 selected = item.path in selection,
@@ -224,7 +225,7 @@ private fun SweepTabs(
 @Composable
 private fun SweepTab(label: String, count: Int, active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val t = LocalTheme.current
-    val bg = if (active) t.accent else t.panel
+    val bg = if (active) t.accent else t.card
     val fg = if (active) t.onAccent else t.ink
     Box(
         modifier
