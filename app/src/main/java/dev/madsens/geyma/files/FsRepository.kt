@@ -181,7 +181,7 @@ class FsRepository(private val db: GeymaDb) {
         val since = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(days.toLong())
         Almanac.compute(
             events = events.since(since),
-            neglected = seen.neverOpenedCount(),
+            neglected = sweepCandidates().size,
             nowMs = System.currentTimeMillis(),
             days = days,
         )
