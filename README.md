@@ -1,79 +1,90 @@
-# Geyma Mobile
+<p align="center">
+  <img src="docs/assets/geyma-mobile-hero.png" alt="Geyma Mobile — the file manager that remembers" width="100%" />
+</p>
 
-The Android companion to [Geyma](https://github.com/MadsenDev/geyma-file-manager) — a file
-manager that remembers. The name is Old Norse for *"to keep, to guard."*
+<p align="center">
+  <a href="https://github.com/vardirhq/geyma-mobile/actions/workflows/android.yml"><img alt="Android build" src="https://img.shields.io/github/actions/workflow/status/vardirhq/geyma-mobile/android.yml?branch=main&style=flat-square&label=build" /></a>
+  <img alt="Android 8 or newer" src="https://img.shields.io/badge/Android-8%2B-2C6E49?style=flat-square&logo=android&logoColor=white" />
+  <img alt="Kotlin and Jetpack Compose" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7A4B8C?style=flat-square&logo=kotlin&logoColor=white" />
+  <img alt="Private and local-first" src="https://img.shields.io/badge/privacy-local--first-B4562E?style=flat-square" />
+</p>
 
-Native Kotlin + Jetpack Compose, sharing the desktop app's design language and core ideas:
+Geyma is an Android file manager with a memory. It remembers when files arrive, where
+they move, what they were called, and whether you ever returned to them—so your file
+system becomes a useful history instead of an unexplained pile of folders.
 
-- **Memory journal** — every move, rename, star, trash and restore is recorded locally.
-  Each file has an activity timeline (up to 200 events), and the Timeline tab shows
-  disk-wide history grouped by day.
-- **Arrival provenance** — Geyma watches the folders where files land on a phone
-  (downloads, screenshots, camera, messaging media) and journals each new file as it
-  *arrives*, so every stray PDF and forwarded image gets a birth certificate — even the
-  ones Geyma didn't create. Detected both live and by reconciling on launch.
-- **Find** — journal-wide search that looks through the *past*, not just the current
-  tree: a file you had last week still turns up after it was moved, renamed, or trashed,
-  and the result tells you where it went.
-- **Sweep** — cleanup ranked by neglect instead of size: files that arrived and were
-  never opened, oldest first. Because trash remembers origins, a sweep is fully
-  reversible — restore any of it with one tap.
-- **Dossier** — a per-file biography: where it arrived from, everywhere it has been
-  (moves and renames it lived through), how often it was opened, which sets hold it,
-  and its full journal timeline — reached by tapping any file in the recent activity
-  or the Almanac.
-- **Almanac** — the journal looking back at itself: a two-week activity sparkline,
-  how much arrived versus how much was ever opened, and the busiest folders and
-  most-handled files, each a tap away from its dossier.
-- **Echoes** — byte-for-byte duplicate finder, framed as the journal noticing the
-  same file twice. The oldest copy in each set is kept; the redundant echoes sweep to
-  trash and, like every sweep, come back with one tap.
-- **Revisit** — ask any file to resurface: schedule it from its dossier and it
-  reappears in a "Back for you" shelf on Home when its moment arrives. The reminder
-  follows the file through moves and renames like everything else Geyma guards.
-- **Ghost trails** — folders show faint dashed markers where files recently departed,
-  with where they went and when.
-- **Working sets** — playlist-like collections of file *references* that stay in sync
-  through moves and renames. Geyma registers as a share *target* (share files from any
-  app straight into a set) and a set shares back out as a multi-file bundle.
-- **Continuity** — export your stars, sets and timeline as a portable `.geyma` bundle to
-  hand off to the desktop app or another phone, and merge one back in. No account, no
-  server: nothing leaves the device except the file you choose to share.
-- **Recoverable trash** — app-managed trash that remembers each file's origin for
-  one-tap restore.
-- **The 8 desktop skins** — Parchment, Obsidian, Phosphor, Nord, Amber, Plasma,
-  Synthwave and Paper, ported token-for-token, with the same override system
-  (accent, radius, tile style, mono icons, backdrop pattern, font).
+It is native, local-first, and deliberately account-free. Your journal, search index,
+working sets, notes, and preferences stay on your device.
 
-Plus the standard file-manager toolkit: browse internal storage and SD cards,
-breadcrumbs, list/grid views, sort and filter, hidden files, multi-select with
-copy/move/rename, image and video thumbnails, open/share via other apps.
+## More than a file browser
 
-Everything stays on-device: the journal, sets, the seen-file ledger and preferences
-live in a local Room database and DataStore. No network access, no telemetry — the
-one thing that ever leaves is a continuity bundle you explicitly share.
+| Remember | Rediscover | Clean up safely |
+| --- | --- | --- |
+| Every arrival, move, rename, open, star, trash, and restore becomes part of a file's story. | Search the journal—including text found inside images—and find files even after they moved. | Surface neglected files and duplicate echoes, then sweep them into recoverable trash. |
 
-## Building
+### A biography for every file
 
-```bash
-./gradlew assembleDebug        # debug APK at app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # JVM unit tests (path utils, kinds, theme, insights)
-./gradlew lintDebug
-```
+Open a **Dossier** to see where a file came from, everywhere it has been, how often it
+was opened, the sets that reference it, your pinned note, and its complete timeline.
 
-Requires JDK 17 and the Android SDK (compileSdk 35). CI builds the debug APK on every
-push (`.github/workflows/android.yml`) and uploads it as the `geyma-mobile-debug`
-artifact.
+### History that stays useful
 
-## Storage access
+The **Timeline** shows activity across storage. **Ghost trails** explain where recently
+moved files went. **Almanac** turns the journal into a two-week view of arrivals,
+neglect, busy folders, and frequently handled files.
 
-Geyma is a full file manager, so on Android 11+ it asks for the "All files access"
-special permission (`MANAGE_EXTERNAL_STORAGE`); on Android 8–10 it uses the legacy
-read/write permissions. Trash lives in `.geyma/trash` on primary storage.
+### Organization without duplication
 
-## Status
+**Working sets** behave like playlists: they reference files without copying them and
+follow those files through moves and renames. Share files from another Android app
+directly into a set, or pack a set for offline use.
 
-Early v0.1 — core browsing, journal, ghosts, sets, trash, skins, plus the mobile-first
-additions above (arrival provenance, Find, Sweep, share-sheet sets, continuity bundles).
-Not yet ported from desktop: archive preview/extraction, batch rename, rule-based (smart)
-sets, SFTP/SMB, local AI features.
+## Built for the device in your hand
+
+- Browse internal storage and SD cards in list or grid view
+- Preview images, GIFs, SVGs, video, audio, PDFs, Markdown, HTML, text, and code
+- Browse ZIP-compatible archives and extract them safely
+- Find duplicates by content with **Echoes**
+- Resurface forgotten files later with **Revisit**
+- Protect important paths with **Seals**
+- Carry history between devices with portable `.geyma` continuity bundles
+- Choose from eight skins shared with the desktop Geyma app
+
+[Explore every feature →](docs/features.md)
+
+## Privacy by design
+
+Geyma has no account, telemetry, advertising, or cloud service. Image text recognition
+runs on-device. Nothing leaves your phone unless you explicitly share a file or export
+a continuity bundle.
+
+Because it is a full file manager, Geyma requires broad storage access. The permission
+is used to browse and manage the files you choose—not to upload or profile them.
+
+[Read the privacy and storage model →](docs/privacy-and-storage.md)
+
+## Try the development build
+
+Geyma Mobile is under active development. The rolling `dev` release contains the
+latest debug APK for hands-on testing:
+
+**[Download the latest development APK](https://github.com/vardirhq/geyma-mobile/releases/tag/dev)**
+
+Debug builds use an ephemeral signing key, so Android may require you to uninstall an
+older development build before installing a newer one.
+
+## Documentation
+
+- [Feature guide](docs/features.md)
+- [Privacy and storage access](docs/privacy-and-storage.md)
+- [Build and development guide](docs/building.md)
+- [Screenshot and visual asset guide](docs/visual-assets.md)
+- [Desktop Geyma](https://github.com/MadsenDev/geyma-file-manager)
+
+## Project status
+
+Current app version: **0.3.1**. Core browsing, journaling, search, cleanup, dossiers,
+working sets, continuity, in-app previews, and ZIP browsing are implemented. Batch
+rename, smart sets, remote storage, and desktop-local AI features are not yet ported.
+
+Geyma means *“to keep, to guard”* in Old Norse.
