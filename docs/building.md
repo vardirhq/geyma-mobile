@@ -35,6 +35,14 @@ The rolling development release is published at:
 Debug builds use the runner's temporary signing key. Android may require an older
 development build to be uninstalled before installing a newer one.
 
+Stable releases are published by `.github/workflows/release.yml` when a
+`v*.*.*` tag is pushed. The workflow validates the tag against `versionName`,
+runs tests and lint, builds a release APK, signs it with repository secrets, and
+attaches the APK plus a SHA-256 checksum to the GitHub Release.
+
+See [Releasing Geyma Mobile](releasing.md) for the release checklist and required
+signing secrets.
+
 ## Architecture at a glance
 
 - `theme/` — the eight desktop-compatible skins and Material 3 integration

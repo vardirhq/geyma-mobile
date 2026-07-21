@@ -63,7 +63,10 @@ is used to browse and manage the files you choose—not to upload or profile the
 
 [Read the privacy and storage model →](docs/privacy-and-storage.md)
 
-## Try the development build
+## Try Geyma Mobile
+
+Stable signed APKs are published on the
+[Releases page](https://github.com/vardirhq/geyma-mobile/releases).
 
 Geyma Mobile is under active development. The rolling `dev` release contains the
 latest debug APK for hands-on testing:
@@ -78,6 +81,7 @@ older development build before installing a newer one.
 - [Feature guide](docs/features.md)
 - [Privacy and storage access](docs/privacy-and-storage.md)
 - [Build and development guide](docs/building.md)
+- [Release checklist](docs/releasing.md)
 - [Screenshot and visual asset guide](docs/visual-assets.md)
 - [Desktop Geyma](https://github.com/MadsenDev/geyma-file-manager)
 
