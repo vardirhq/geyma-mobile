@@ -56,9 +56,15 @@ import java.io.File
  * or trashed, and the result tells you where it went.
  */
 @Composable
-fun FinderScreen(app: GeymaApp, onBack: () -> Unit, onView: (String) -> Unit, onBrowseTo: (String) -> Unit) {
+fun FinderScreen(
+    app: GeymaApp,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onBack: () -> Unit,
+    onView: (String) -> Unit,
+    onBrowseTo: (String) -> Unit,
+) {
     val t = LocalTheme.current
-    var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<SearchHit>>(emptyList()) }
     var textHits by remember { mutableStateOf<List<OcrHit>>(emptyList()) }
 
@@ -87,7 +93,7 @@ fun FinderScreen(app: GeymaApp, onBack: () -> Unit, onView: (String) -> Unit, on
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it },
+            onValueChange = onQueryChange,
             placeholder = { Text("Name of a file you had…") },
             leadingIcon = { Icon(Icons.Filled.Search, null, tint = t.inkSoft) },
             singleLine = true,

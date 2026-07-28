@@ -48,6 +48,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.madsens.geyma.GeymaApp
 import dev.madsens.geyma.files.ArchiveSupport
@@ -124,6 +125,7 @@ fun GeymaRoot(
         var trashOpen by remember { mutableStateOf(false) }
         var settingsOpen by remember { mutableStateOf(false) }
         var finderOpen by remember { mutableStateOf(false) }
+        var finderQuery by rememberSaveable { mutableStateOf("") }
         var sweepOpen by remember { mutableStateOf(false) }
         var almanacOpen by remember { mutableStateOf(false) }
         var echoesOpen by remember { mutableStateOf(false) }
@@ -150,15 +152,15 @@ fun GeymaRoot(
         // Tapping a file: browse into it if it's a zip we can read, otherwise open
         // it inside Geyma when we have a viewer, otherwise hand off to the system
         // chooser. Every path counts as an "open".
-        fun openEntry(path: String) {
+        fun openEntry(path: String, returnToFinder: Boolean = false) {
             val file = File(path)
             when {
                 ArchiveSupport.canBrowse(file.name) -> {
-                    closeOverlays()
+                    if (!returnToFinder) closeOverlays()
                     archivePath = path
                 }
                 InAppViewer.canView(file.name, file.length()) -> {
-                    closeOverlays()
+                    if (!returnToFinder) closeOverlays()
                     viewerPath = path
                 }
                 else -> openFile(context, path) { scope.launch { app.repo.recordOpen(it) } }
@@ -218,6 +220,7 @@ fun GeymaRoot(
                             onBack = { archivePath = null },
                             onExtracted = { folder ->
                                 archivePath = null
+                                finderOpen = false
                                 vm.open(folder)
                                 tab = Tab.FILES
                             },
@@ -227,8 +230,10 @@ fun GeymaRoot(
                         BackHandler { finderOpen = false }
                         FinderScreen(
                             app = app,
+                            query = finderQuery,
+                            onQueryChange = { finderQuery = it },
                             onBack = { finderOpen = false },
-                            onView = { openEntry(it) },
+                            onView = { openEntry(it, returnToFinder = true) },
                             onBrowseTo = { path ->
                                 finderOpen = false
                                 vm.open(path)
