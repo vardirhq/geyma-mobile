@@ -220,6 +220,7 @@ fun GeymaRoot(
                             onBack = { archivePath = null },
                             onExtracted = { folder ->
                                 archivePath = null
+                                finderOpen = false
                                 vm.open(folder)
                                 tab = Tab.FILES
                             },
